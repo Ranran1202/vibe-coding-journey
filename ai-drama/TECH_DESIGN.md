@@ -55,6 +55,7 @@ vibe-coding-journey/
 │   ├── episodes.html          # 分集页：3–5 集列表/详情 + 视频嵌入
 │   ├── characters.html        # 角色页：人物介绍 + 设定参考图
 │   ├── making.html            # 制作花絮/用了哪些 AI 工具页（复盘）
+│   ├── TECH_DESIGN.md         # 本文：AI 漫剧技术设计
 │   ├── assets/
 │   │   ├── css/style.css      # 样式（手机可打开的响应式）
 │   │   ├── js/site.js         # 前端逻辑：加载 episodes.json、渲染列表
@@ -62,8 +63,7 @@ vibe-coding-journey/
 │   └── data/
 │       └── episodes.json      # 剧集/角色/工具 的静态数据（前端 fetch）
 ├── .gitignore                 # 已含 .env / node_modules / 密钥 等
-├── TECH_DESIGN.md             # 今日热搜技术设计（同仓另一项目）
-└── TECH_DESIGN.md            # 本文（AI 漫剧技术设计）
+└── TECH_DESIGN.md             # 今日热搜技术设计（同仓另一项目）
 ```
 
 要点：

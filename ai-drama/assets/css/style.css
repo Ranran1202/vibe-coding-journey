@@ -1,0 +1,275 @@
+/* ============================================================
+   《我在大学期间用AI买股身价过亿》站点样式
+   纯手写 CSS，无框架、无外链字体，手机可直接打开
+   ============================================================ */
+
+:root {
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --ink: #16181d;
+  --ink-2: #5b6270;
+  --line: #e5e7eb;
+  --accent: #d92b3a;      /* 主色：涨红 */
+  --accent-soft: #fdecee;
+  --radius: 14px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 8px 24px rgba(16, 24, 40, .06);
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  line-height: 1.7;
+  font-size: 16px;
+}
+
+/* ---------- 顶部导航 ---------- */
+.site-header {
+  background: #10131a;
+  color: #fff;
+}
+
+.site-header .inner {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 14px 20px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+}
+
+.brand {
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: .2px;
+  margin-right: auto;
+}
+
+.nav a {
+  color: #c7ccd6;
+  text-decoration: none;
+  font-size: 14px;
+  padding: 4px 2px;
+  border-bottom: 2px solid transparent;
+}
+
+.nav a:hover { color: #fff; }
+
+.nav a.active {
+  color: #fff;
+  border-bottom-color: var(--accent);
+}
+
+/* ---------- 首屏 ---------- */
+.hero {
+  background: linear-gradient(180deg, #10131a 0%, #1b2030 100%);
+  color: #fff;
+  padding: 48px 20px 56px;
+}
+
+.hero .inner { max-width: 960px; margin: 0 auto; }
+
+.badge {
+  display: inline-block;
+  background: rgba(217, 43, 58, .18);
+  color: #ff8b96;
+  border: 1px solid rgba(217, 43, 58, .45);
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 12px;
+  letter-spacing: .5px;
+}
+
+.hero h1 {
+  font-size: 30px;
+  line-height: 1.35;
+  margin: 16px 0 10px;
+}
+
+.hero p {
+  color: #b9c0cd;
+  margin: 0 0 22px;
+  max-width: 620px;
+}
+
+/* ---------- 通用区块 ---------- */
+main { max-width: 960px; margin: 0 auto; padding: 36px 20px 60px; }
+
+.section { margin-bottom: 44px; }
+
+.section > h2 {
+  font-size: 19px;
+  margin: 0 0 6px;
+}
+
+.section > .sub {
+  color: var(--ink-2);
+  font-size: 14px;
+  margin: 0 0 18px;
+}
+
+/* ---------- 卡片网格 ---------- */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+
+.card h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.card p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+.card .meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.tag {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+}
+
+.no {
+  font-weight: 700;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+/* ---------- 视频占位 / 播放器 ---------- */
+.player {
+  margin-top: 14px;
+  border-radius: 10px;
+  background: #f1f3f6;
+  border: 1px dashed #cfd4dc;
+  color: var(--ink-2);
+  font-size: 13px;
+  text-align: center;
+  padding: 26px 14px;
+}
+
+.player iframe {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  border-radius: 10px;
+  display: block;
+}
+
+/* ---------- 角色 ---------- */
+.avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: #f1f3f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  margin-bottom: 12px;
+}
+
+/* ---------- 设定表 ---------- */
+.kv {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 10px 16px;
+  font-size: 14px;
+}
+
+.kv dt { color: var(--ink-2); margin: 0; }
+.kv dd { margin: 0; }
+
+/* ---------- 时间线 ---------- */
+.timeline { list-style: none; margin: 0; padding: 0; }
+
+.timeline li {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--line);
+  font-size: 14px;
+}
+
+.timeline li:last-child { border-bottom: 0; }
+
+.timeline .stage {
+  flex: 0 0 68px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---------- 按钮 ---------- */
+.btn {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  text-decoration: none;
+  border-radius: 10px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.btn.ghost {
+  background: transparent;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, .35);
+  margin-left: 8px;
+}
+
+/* ---------- 出错提示 ---------- */
+.error-box {
+  background: #fff7e6;
+  border: 1px solid #f0d59a;
+  color: #7a5300;
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-size: 14px;
+  margin-bottom: 24px;
+}
+
+/* ---------- 页脚 ---------- */
+.site-footer {
+  border-top: 1px solid var(--line);
+  background: #fff;
+  padding: 24px 20px 40px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.site-footer .inner { max-width: 960px; margin: 0 auto; }
+
+/* ---------- 小屏微调 ---------- */
+@media (max-width: 520px) {
+  .hero h1 { font-size: 23px; }
+  .kv { grid-template-columns: 90px 1fr; }
+}

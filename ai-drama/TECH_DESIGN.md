@@ -1,4 +1,4 @@
-# 技术设计：AI漫剧《我在大学期间用AI买股身价过亿》
+# 技术设计：AI漫剧《我的AI不预测股价，它预测人性》
 
 > 技术设计日期：2026-09-20（重写版，覆盖 Day 5 薄版）
 > 需求依据：`ai-drama-research.md`（Day 3 需求研究）
@@ -113,7 +113,7 @@ vibe-coding-journey/
 ### 3.4 SiteMeta（站点元信息）
 | 字段 | 类型 | 说明 | 示例 |
 |---|---|---|---|
-| `dramaTitle` | string | 剧名 | `"我在大学期间用AI买股身价过亿"` |
+| `dramaTitle` | string | 剧名 | `"我的AI不预测股价，它预测人性"` |
 | `tagline` | string | 标语 | `"一部用 AI 造出来的逆袭漫剧"` |
 | `disclaimer` | string | 虚构声明 | `"本剧纯属虚构，不构成任何投资建议"` |
 | `socialLinks` | array | 发布平台链接 | `["抖音…","B站…"]` |

@@ -61,6 +61,10 @@ body {
 }
 .btn-refresh,
 .btn-fav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--text);
@@ -68,8 +72,46 @@ body {
   border-radius: 8px;
   font-size: 0.9rem;
   text-decoration: none;
+  cursor: pointer;
 }
 .btn-fav { color: var(--accent); }
+
+/* 按钮交互状态：悬停 / 按下 / 键盘聚焦（纯样式，不改动类名与任何功能） */
+.btn-refresh,
+.btn-fav,
+.btn-retry,
+.btn-go,
+.btn-fav-toggle {
+  min-height: 40px;
+}
+.btn-refresh:hover,
+.btn-fav:hover,
+.btn-fav-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.btn-retry:hover { background: #b91c2c; border-color: #b91c2c; color: #fff; }
+.btn-go:hover { background: #b91c2c; }
+.btn-fav-toggle.is-fav:hover { color: #fff; }
+.btn-refresh:active,
+.btn-fav:active,
+.btn-retry:active,
+.btn-go:active,
+.btn-fav-toggle:active { transform: translateY(1px); }
+.tab:hover { border-color: var(--accent); color: var(--text); }
+.tab.is-active:hover { color: #fff; }
+.star:hover { color: var(--accent); }
+.btn-refresh:focus-visible,
+.btn-fav:focus-visible,
+.btn-retry:focus-visible,
+.btn-go:focus-visible,
+.btn-fav-toggle:focus-visible,
+.star:focus-visible,
+.tab:focus-visible,
+.modal-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 /* 热搜列表 */
 .hot-list { list-style: none; margin: 0; padding: 0; }
@@ -80,17 +122,28 @@ body {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 0.7rem 0.9rem;
-  margin-bottom: 0.6rem;
+  padding: 0.75rem 0.95rem;
+  margin-bottom: 0.85rem;
 }
 .rank {
-  flex: 0 0 1.6rem;
+  flex: 0 0 1.4rem;
   text-align: center;
-  font-weight: 700;
+  font-weight: 600;
+  font-size: 0.95rem;
   color: var(--accent);
 }
-.title { flex: 1; }
-.heat { color: var(--muted); font-size: 0.85rem; }
+.title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 1.02rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+.heat {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
 
 /* 页脚 */
 .site-footer {
@@ -232,4 +285,7 @@ body {
 @media (max-width: 480px) {
   .site-header h1 { font-size: 1.4rem; }
   .toolbar { flex-direction: column; gap: 0.6rem; align-items: stretch; }
+  .btn-refresh, .btn-fav { width: 100%; min-height: 44px; }
+  .hot-item { gap: 0.6rem; padding: 0.7rem 0.8rem; }
+  .title { font-size: 0.98rem; }
 }

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>今日热搜</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- 站点头部 -->
+  <header class="site-header">
+    <h1>今日热搜</h1>
+    <p class="subtitle">一眼看完全网在热什么</p>
+  </header>
+
+  <!-- 平台切换标签（第 3 步起由 js/app.js 从 config.js 生成，含「全部」） -->
+  <nav class="platform-tabs" id="platformTabs" aria-label="平台切换"></nav>
+
+  <main class="container">
+    <!-- 工具条：刷新按钮 + 我的收藏入口（第 5 步收藏入口可切换高亮） -->
+    <div class="toolbar">
+      <button class="btn-refresh" id="btnRefresh" type="button">手动刷新</button>
+      <a class="btn-fav" id="btnFav" href="#">我的收藏</a>
+    </div>
+
+    <!-- 热搜列表（由 js/app.js 用 js/data.js 渲染） -->
+    <ul class="hot-list" id="hotList"></ul>
+  </main>
+
+  <footer class="site-footer">
+    <p>纯静态演示 · 数据均为示例</p>
+  </footer>
+
+  <!-- 详情弹窗挂载点（默认隐藏） -->
+  <div id="modalRoot" class="hidden"></div>
+
+  <!-- 数据层：平台清单 / 示例热搜 / 收藏存储 / 渲染逻辑 -->
+  <script src="js/config.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

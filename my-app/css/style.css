@@ -1,0 +1,235 @@
+/* 今日热搜 · 页面骨架样式（纯静态，无 JS） */
+
+:root {
+  --bg: #f6f8fa;
+  --card: #ffffff;
+  --text: #24292f;
+  --muted: #57606a;
+  --accent: #d92b3a;      /* 主色：热搜红 */
+  --border: #e1e4e8;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* 站点头部 */
+.site-header {
+  text-align: center;
+  padding: 1.5rem 1rem 0.5rem;
+}
+.site-header h1 { margin: 0; font-size: 1.8rem; }
+.subtitle { margin: 0.3rem 0 0; color: var(--muted); font-size: 0.9rem; }
+
+/* 平台切换标签 */
+.platform-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1rem 1rem 0.5rem;
+  flex-wrap: wrap;
+}
+.tab {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted);
+  padding: 0.4rem 1.1rem;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+.tab.is-active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* 主体容器 */
+.container { max-width: 720px; margin: 0 auto; padding: 0 1rem; }
+
+/* 工具条 */
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0.5rem 0 1rem;
+}
+.btn-refresh,
+.btn-fav {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  padding: 0.4rem 0.9rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+.btn-fav { color: var(--accent); }
+
+/* 热搜列表 */
+.hot-list { list-style: none; margin: 0; padding: 0; }
+.hot-item {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 0.6rem;
+}
+.rank {
+  flex: 0 0 1.6rem;
+  text-align: center;
+  font-weight: 700;
+  color: var(--accent);
+}
+.title { flex: 1; }
+.heat { color: var(--muted); font-size: 0.85rem; }
+
+/* 页脚 */
+.site-footer {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.8rem;
+  padding: 1.5rem 1rem;
+}
+
+/* 我的收藏入口：激活态高亮 */
+.btn-fav.is-active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* 列表中每条的收藏星标（第 5 步） */
+.star {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 0 0.15rem;
+}
+.star.is-fav { color: var(--accent); }
+
+/* 空状态 / 加载失败（第 5 步） */
+.empty-box,
+.error-box {
+  list-style: none;
+  text-align: center;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.2rem;
+  color: var(--muted);
+}
+.error-box { color: var(--text); }
+.btn-retry {
+  margin-top: 0.6rem;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  padding: 0.4rem 1.2rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+/* 详情弹窗（第 4 步） */
+.hidden { display: none !important; }
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 50;
+}
+.modal-card {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  background: var(--card);
+  border-radius: 14px;
+  padding: 1.4rem 1.4rem 1.6rem;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+}
+.modal-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.7rem;
+  border: none;
+  background: transparent;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+}
+.modal-title {
+  margin: 0 0 0.4rem;
+  font-size: 1.2rem;
+  padding-right: 1.5rem;
+}
+.modal-meta {
+  margin: 0 0 1rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.btn-go {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  text-decoration: none;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+.btn-fav-toggle {
+  display: block;
+  margin-top: 0.9rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  padding: 0.4rem 1rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.btn-fav-toggle.is-fav {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.note-wrap { margin-top: 0.9rem; }
+.note-label {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.note-input {
+  width: 100%;
+  min-height: 64px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+}
+
+/* 手机适配 */
+@media (max-width: 480px) {
+  .site-header h1 { font-size: 1.4rem; }
+  .toolbar { flex-direction: column; gap: 0.6rem; align-items: stretch; }
+}

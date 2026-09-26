@@ -155,7 +155,7 @@ vibe-coding-journey/
 ### 5.1 方案 A 数据流图（Mermaid，GitHub 网页自动渲染）
 ```mermaid
 flowchart TD
-    S[文字剧本 / Prompt] --> K[可灵 / 即梦 · 云端生成]
+    S[文字剧本 / Prompt] --> K[ComfyUI · 云端 GPU 生成（即梦备选出图）]
     K --> V[视频 / 图片素材]
     V --> J[剪映 · 剪辑 + 字幕 + BGM]
     J --> P[外部视频平台：B站 / 抖音 / 对象存储]
@@ -231,7 +231,7 @@ THIRD_PARTY_API_KEY=xxxxxxxx   # 如对象存储/分析服务的 Key
 | 场景 | 影响与做法 |
 |---|---|
 | **方案 A → 方案 B（未来升级）** | 引入后端/数据库/鉴权；把 `episodes.json` 的数据迁进 DB；上线评论/收藏/统计；视频可保留外链或迁对象存储；`.env` 上云并保密；**定期备份数据库** |
-| 换生成工具（可灵 ↔ 即梦） | **不影响站点代码**，只改生产方式与复盘文档 |
+| 换生成工具（ComfyUI ↔ 即梦/可灵） | **不影响站点代码**，只改生产方式与复盘文档 |
 | 换视频托管平台 | 仅改 `videoUrl` 与 `embedType`，替换 iframe/链接 |
 | 加一集漫剧 | 改 `episodes.json` + 对应视频链接；静态内容扩展 |
 | 加一个角色 | 改 `episodes.json` 的 characters 段；角色页自动渲染 |

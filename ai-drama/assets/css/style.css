@@ -99,13 +99,14 @@ body {
 }
 
 /* ---------- 通用区块 ---------- */
-main { max-width: 960px; margin: 0 auto; padding: 36px 20px 60px; }
+main { max-width: 960px; margin: 0 auto; padding: 32px 20px 60px; }
 
-.section { margin-bottom: 44px; }
+.section { margin-bottom: 48px; }
 
 .section > h2 {
-  font-size: 19px;
-  margin: 0 0 6px;
+  font-size: 21px;
+  letter-spacing: .2px;
+  margin: 0 0 8px;
 }
 
 .section > .sub {
@@ -118,20 +119,20 @@ main { max-width: 960px; margin: 0 auto; padding: 36px 20px 60px; }
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 16px;
+  gap: 18px;
 }
 
 .card {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 18px;
+  padding: 20px;
   box-shadow: var(--shadow);
 }
 
 .card h3 {
   margin: 0 0 6px;
-  font-size: 16px;
+  font-size: 17px;
 }
 
 .card p {
@@ -152,7 +153,8 @@ main { max-width: 960px; margin: 0 auto; padding: 36px 20px 60px; }
 
 .tag {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: #c0212e;
+  font-weight: 600;
   border-radius: 999px;
   padding: 2px 10px;
   font-size: 12px;
@@ -237,14 +239,26 @@ main { max-width: 960px; margin: 0 auto; padding: 36px 20px 60px; }
   padding: 10px 18px;
   font-size: 14px;
   font-weight: 600;
+  transition: background-color .15s ease, transform .05s ease;
 }
 
+/* 按钮交互状态：悬停 / 按下 / 键盘聚焦（纯样式，不改类名与功能） */
+.btn:hover {
+  background: #ff5a6a;
+  box-shadow: 0 8px 20px rgba(217, 43, 58, .45);
+  transform: translateY(-1px);
+}
+.btn:active { transform: translateY(1px); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .btn.ghost {
   background: transparent;
   color: #fff;
   border: 1px solid rgba(255, 255, 255, .35);
   margin-left: 8px;
 }
+.btn.ghost:hover { background: rgba(255, 255, 255, .12); border-color: rgba(255, 255, 255, .6); }
+.btn.ghost:active { transform: translateY(1px); }
+.btn.ghost:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 /* ---------- 出错提示 ---------- */
 .error-box {
@@ -272,4 +286,13 @@ main { max-width: 960px; margin: 0 auto; padding: 36px 20px 60px; }
 @media (max-width: 520px) {
   .hero h1 { font-size: 23px; }
   .kv { grid-template-columns: 90px 1fr; }
+  .hero .btn {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    margin: 0 0 10px;
+    text-align: center;
+  }
+  .hero .btn.ghost { margin-left: 0; }
+  .nav a { padding: 8px 2px; }
 }

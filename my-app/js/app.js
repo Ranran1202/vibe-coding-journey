@@ -21,6 +21,45 @@
     return key;
   }
 
+  // Day 11：复制文本（优先 clipboard API，附带 execCommand 兜底，纯前端不依赖后端）
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve, reject) {
+      try {
+        var ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        ok ? resolve() : reject(new Error("copy failed"));
+      } catch (err) { reject(err); }
+    });
+  }
+
+  // Day 11：复制成功提示（停留约 1.6 秒后淡出，连续点击会重置，不堆叠）
+  var toastTimer = null;
+  function showToast(msg) {
+    var root = document.getElementById("toastRoot");
+    if (!root) return;
+    root.innerHTML = "";
+    var t = document.createElement("div");
+    t.className = "toast";
+    t.textContent = msg;
+    root.appendChild(t);
+    void t.offsetWidth;        // 强制重排以触发进入动画
+    t.classList.add("show");
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      t.classList.remove("show");
+      setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 250);
+    }, 1600);
+  }
+
   // 数据加载：真实环境会换成 fetch(...)。演示用静态数据，支持 ?fail=1 模拟失败。
   function loadData() {
     return new Promise(function (resolve, reject) {
@@ -129,6 +168,23 @@
       li.appendChild(rank);
       li.appendChild(title);
       li.appendChild(heat);
+
+      // 复制标题按钮（Day 11：点击复制 + 成功提示，不依赖后端）
+      var copyBtn = document.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.className = "btn-copy";
+      copyBtn.textContent = "复制";
+      copyBtn.setAttribute("aria-label", "复制标题");
+      copyBtn.addEventListener("click", function (e) {
+        e.stopPropagation();   // 避免触发整条详情弹窗
+        copyText(it.title).then(function () {
+          showToast("已复制 ✓ " + it.title);
+        }).catch(function () {
+          showToast("复制失败，请手动复制");
+        });
+      });
+      li.appendChild(copyBtn);
+
       li.addEventListener("click", function () { openDetail(it); });
 
       ul.appendChild(li);

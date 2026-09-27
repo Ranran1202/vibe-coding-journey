@@ -321,15 +321,35 @@
     }
   }
 
+  // 手动刷新：带「加载中 / 禁用 / 成功 / 失败」状态的全局交互
+  // 前端临时状态（演示用静态数据），不依赖后端；后续接真实接口只需替换 loadData 内部。
+  var refreshing = false;
+  function setRefreshBtn(loading) {
+    var btn = document.getElementById("btnRefresh");
+    if (!btn) return;
+    btn.classList.toggle("is-loading", loading);
+    btn.disabled = loading;                         // 处理期间禁用，防重复点击
+    btn.setAttribute("aria-busy", loading ? "true" : "false");
+    btn.textContent = loading ? "刷新中…" : "手动刷新";
+  }
+
   function refresh() {
-    state.error = false;
+    if (refreshing) return;                         // 处理中禁止重复触发
+    refreshing = true;
+    setRefreshBtn(true);                            // 进入「刷新中…」并禁用
     loadData().then(function (data) {
       state.items = data;
       state.error = false;
       renderList();
+      refreshing = false;
+      setRefreshBtn(false);                         // 恢复按钮
+      showToast("已刷新 ✓ 共 " + data.length + " 条");
     }).catch(function () {
       state.error = true;
-      renderList();
+      renderList();                                 // 显示失败提示（错误框 + 重试）
+      refreshing = false;
+      setRefreshBtn(false);                         // 恢复按钮
+      showToast("刷新失败，请稍后重试", true);
     });
   }
 

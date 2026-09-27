@@ -1,0 +1,309 @@
+{
+ "1": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "Zimage/z_image_turbo_bf16.safetensors",
+   "weight_dtype": "default"
+  }
+ },
+ "2": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "qwen_3_4b.safetensors",
+   "type": "lumina2"
+  }
+ },
+ "3": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "ae.safetensors"
+  }
+ },
+ "4": {
+  "class_type": "CLIPTextEncodeLumina2",
+  "inputs": {
+   "system_prompt": "superior",
+   "user_prompt": "",
+   "clip": [
+    "2",
+    0
+   ]
+  }
+ },
+ "101": {
+  "class_type": "CLIPTextEncodeLumina2",
+  "inputs": {
+   "system_prompt": "superior",
+   "user_prompt": "一个19岁的中国男大学生林默，黑短发齐耳，戴细黑框眼镜，中等身材，穿着纯色连帽卫衣，表情平静克制，趴在夜晚大学宿舍的书桌前低头看手机，台灯暖黄的光打在他的侧脸上，背景是上下铺床架和堆着书本、泡面碗的凌乱书桌，窗外有城市灯火。中景，深夜安静又孤寂的氛围。写实电影感画面，柔和真实的光影与皮肤质感，浅景深。画面中绝对不出现任何文字、字母、汉字、数字、符号、水印、logo、界面图标。手机屏幕只由纯色色块和柔光构成；书桌上的道具上也不出现任何文字。 warm color palette, cinematic photorealistic rendering, film still, shallow depth of field, soft realistic skin, detailed face, film grain, best quality, masterpiece, highly detailed, sharp focus",
+   "clip": [
+    "2",
+    0
+   ]
+  }
+ },
+ "102": {
+  "class_type": "EmptySD3LatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1536,
+   "batch_size": 1
+  }
+ },
+ "103": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "seed": 113139705,
+   "steps": 8,
+   "cfg": 1.0,
+   "sampler_name": "res_multistep",
+   "scheduler": "simple",
+   "denoise": 1.0,
+   "positive": [
+    "101",
+    0
+   ],
+   "negative": [
+    "4",
+    0
+   ],
+   "latent_image": [
+    "102",
+    0
+   ]
+  }
+ },
+ "104": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "103",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "105": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "104",
+    0
+   ],
+   "filename_prefix": "ep1/fix_beat01"
+  }
+ },
+ "111": {
+  "class_type": "CLIPTextEncodeLumina2",
+  "inputs": {
+   "system_prompt": "superior",
+   "user_prompt": "计算机机房，多块显示器组成画面，屏幕上只有极度简化的网络拓扑示意图形：圆点与方块由细线连接成网格，链路正由蓝色变成红色并卡死，色块拥挤到近乎过载，画面带故障般的网格感与扫描线，传达出被自身流量压倒、彻底拥堵的压迫感。冷色荧光灯，冷蓝色调，没有人物。写实电影感画面，浅景深。画面中绝对不出现任何文字、字母、汉字、数字、符号、水印、logo、界面图标。所有屏幕只由纯色色块和柔光构成。 cool color palette, grid feel, cinematic photorealistic rendering, film still, shallow depth of field, soft realistic skin, detailed face, film grain, best quality, masterpiece, highly detailed, sharp focus",
+   "clip": [
+    "2",
+    0
+   ]
+  }
+ },
+ "112": {
+  "class_type": "EmptySD3LatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1536,
+   "batch_size": 1
+  }
+ },
+ "113": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "seed": 244547174,
+   "steps": 8,
+   "cfg": 1.0,
+   "sampler_name": "res_multistep",
+   "scheduler": "simple",
+   "denoise": 1.0,
+   "positive": [
+    "111",
+    0
+   ],
+   "negative": [
+    "4",
+    0
+   ],
+   "latent_image": [
+    "112",
+    0
+   ]
+  }
+ },
+ "114": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "113",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "115": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "114",
+    0
+   ],
+   "filename_prefix": "ep1/fix_beat09"
+  }
+ },
+ "121": {
+  "class_type": "CLIPTextEncodeLumina2",
+  "inputs": {
+   "system_prompt": "superior",
+   "user_prompt": "夜晚大学宿舍桌面特写，画面里只有一部手机，屏幕朝下反扣在木桌上，机身边缘微微震动，桌面上的水杯和合上的笔记本随之轻颤，台灯暖黄，背景是虚化的宿舍一角。画面中没有第二部手机，也看不见手机屏幕的内容。写实电影感画面，浅景深。画面中绝对不出现任何文字、字母、汉字、数字、符号、水印、logo、界面图标。 warm color palette, cinematic photorealistic rendering, film still, shallow depth of field, soft realistic skin, detailed face, film grain, best quality, masterpiece, highly detailed, sharp focus",
+   "clip": [
+    "2",
+    0
+   ]
+  }
+ },
+ "122": {
+  "class_type": "EmptySD3LatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1536,
+   "batch_size": 1
+  }
+ },
+ "123": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "seed": 922627348,
+   "steps": 8,
+   "cfg": 1.0,
+   "sampler_name": "res_multistep",
+   "scheduler": "simple",
+   "denoise": 1.0,
+   "positive": [
+    "121",
+    0
+   ],
+   "negative": [
+    "4",
+    0
+   ],
+   "latent_image": [
+    "122",
+    0
+   ]
+  }
+ },
+ "124": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "123",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "125": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "124",
+    0
+   ],
+   "filename_prefix": "ep1/fix_beat10"
+  }
+ },
+ "131": {
+  "class_type": "CLIPTextEncodeLumina2",
+  "inputs": {
+   "system_prompt": "superior",
+   "user_prompt": "手机屏幕特写，深色界面上是竖排的纯色圆角矩形气泡形状；画面上方有一个纯色圆形色块作为头像占位符，正由彩色渐渐褪成灰色；气泡内部完全空白。画面中没有任何人物图像、没有照片、没有动漫角色、没有脸。写实电影感画面，浅景深。屏幕只由纯色色块与柔光构成，画面中绝对不出现任何文字、字母、汉字、数字、符号、水印、logo、界面图标。 cool color palette, cinematic photorealistic rendering, film still, shallow depth of field, soft realistic skin, detailed face, film grain, best quality, masterpiece, highly detailed, sharp focus",
+   "clip": [
+    "2",
+    0
+   ]
+  }
+ },
+ "132": {
+  "class_type": "EmptySD3LatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1536,
+   "batch_size": 1
+  }
+ },
+ "133": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "seed": 1276402739,
+   "steps": 8,
+   "cfg": 1.0,
+   "sampler_name": "res_multistep",
+   "scheduler": "simple",
+   "denoise": 1.0,
+   "positive": [
+    "131",
+    0
+   ],
+   "negative": [
+    "4",
+    0
+   ],
+   "latent_image": [
+    "132",
+    0
+   ]
+  }
+ },
+ "134": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "133",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "135": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "134",
+    0
+   ],
+   "filename_prefix": "ep1/fix_beat13"
+  }
+ }
+}

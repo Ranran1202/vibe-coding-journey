@@ -1,0 +1,999 @@
+{
+ "1": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "Zimage/z_image_turbo_bf16.safetensors",
+   "weight_dtype": "default"
+  }
+ },
+ "2": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "qwen_3_4b.safetensors",
+   "type": "lumina2"
+  }
+ },
+ "3": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "ae.safetensors"
+  }
+ },
+ "4": {
+  "class_type": "CLIPTextEncodeLumina2",
+  "inputs": {
+   "system_prompt": "superior",
+   "user_prompt": "",
+   "clip": [
+    "2",
+    0
+   ]
+  }
+ },
+ "101": {
+  "class_type": "CLIPTextEncodeLumina2",
+  "inputs": {
+   "system_prompt": "superior",
+   "user_prompt": "一个19岁的中国男大学生林默，黑短发齐耳，戴细黑框眼镜，中等身材，穿着纯色连帽卫衣，表情平静克制，趴在夜晚大学宿舍的书桌前，手机亮着放在手边，台灯暖黄的光打在他的侧脸上，背景是上下铺床架和堆着书本、泡面碗的凌乱书桌，窗外有城市灯火。中景，深夜安静又孤寂的氛围。画面中绝对不出现任何文字、字母、汉字、数字、符号、水印、logo、界面图标；所有屏幕与界面只由纯色色块和柔光构成，不出现任何字符。 anime style, cel shading, cinematic lighting, detailed face, clean lineart, film grain, best quality, masterpiece, highly detailed, sharp focus",
+   "clip": [
+    "2",
+    0
+   ]
+  }
+ },
+ "102": {
+  "class_type": "EmptySD3LatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1536,
+   "batch_size": 1
+  }
+ },
+ "103": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "seed": 885594929,
+   "steps": 8,
+   "cfg": 1.0,
+   "sampler_name": "res_multistep",
+   "scheduler": "simple",
+   "denoise": 1.0,
+   "positive": [
+    "101",
+    0
+   ],
+   "negative": [
+    "4",
+    0
+   ],
+   "latent_image": [
+    "102",
+    0
+   ]
+  }
+ },
+ "104": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "103",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "105": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "104",
+    0
+   ],
+   "filename_prefix": "ep1/ep1_beat01"
+  }
+ },
+ "111": {
+  "class_type": "CLIPTextEncodeLumina2",
+  "inputs": {
+   "system_prompt": "superior",
+   "user_prompt": "手机屏幕的极端特写，深色界面上一排排纯色圆角矩形的聊天气泡形状不断向上冒出，气泡内部是完全空白的纯色，几个红色圆点在跳动，屏幕发出柔和的冷光，气泡边缘有轻微光晕，画面密集有压迫感。画面中绝对不出现任何文字、字母、汉字、数字、符号、水印、logo、界面图标；所有屏幕与界面只由纯色色块和柔光构成，不出现任何字符。 anime style, cel shading, cinematic lighting, detailed face, clean lineart, film grain, best quality, masterpiece, highly detailed, sharp focus",
+   "clip": [
+    "2",
+    0
+   ]
+  }
+ },
+ "112": {
+  "class_type": "EmptySD3LatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1536,
+   "batch_size": 1
+  }
+ },
+ "113": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "seed": 609788568,
+   "steps": 8,
+   "cfg": 1.0,
+   "sampler_name": "res_multistep",
+   "scheduler": "simple",
+   "denoise": 1.0,
+   "positive": [
+    "111",
+    0
+   ],
+   "negative": [
+    "4",
+    0
+   ],
+   "latent_image": [
+    "112",
+    0
+   ]
+  }
+ },
+ "114": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "113",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "115": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "114",
+    0
+   ],
+   "filename_prefix": "ep1/ep1_beat02"
+  }
+ },
+ "121": {
+  "class_type": "CLIPTextEncodeLumina2",
+  "inputs": {
+   "system_prompt": "superior",
+   "user_prompt": "左右分屏构图：左半是手机屏幕上密集涌出的纯色聊天气泡形状与红色光点，右半是一个19岁的中国男大学生林默，黑短发齐耳，戴细黑框眼镜，中等身材，穿着纯色连帽卫衣，表情平静克制的侧脸，安静地看着屏幕没有打字，台灯暖光勾边，手机冷光打在脸上。画面中绝对不出现任何文字、字母、汉字、数字、符号、水印、logo、界面图标；所有屏幕与界面只由纯色色块和柔光构成，不出现任何字符。 anime style, cel shading, cinematic lighting, detailed face, clean lineart, film grain, best quality, masterpiece, highly detailed, sharp focus",
+   "clip": [
+    "2",
+    0
+   ]
+  }
+ },
+ "122": {
+  "class_type": "EmptySD3LatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1536,
+   "batch_size": 1
+  }
+ },
+ "123": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "seed": 148192069,
+   "steps": 8,
+   "cfg": 1.0,
+   "sampler_name": "res_multistep",
+   "scheduler": "simple",
+   "denoise": 1.0,
+   "positive": [
+    "121",
+    0
+   ],
+   "negative": [
+    "4",
+    0
+   ],
+   "latent_image": [
+    "122",
+    0
+   ]
+  }
+ },
+ "124": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "123",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "125": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "124",
+    0
+   ],
+   "filename_prefix": "ep1/ep1_beat03"
+  }
+ },
+ "131": {
+  "class_type": "CLIPTextEncodeLumina2",
+  "inputs": {
+   "system_prompt": "superior",
+   "user_prompt": "夜晚大学宿舍，一个19岁的中国男大学生林默，黑短发齐耳，戴细黑框眼镜，中等身材，穿着纯色连帽卫衣，表情平静克制，坐在书桌前没有抬头，视线落在手机上，房门半掩着，门缝漏进走廊的一道暖光和模糊的笑闹光影，台灯暖黄。中景，安静但像被打扰。画面中绝对不出现任何文字、字母、汉字、数字、符号、水印、logo、界面图标；所有屏幕与界面只由纯色色块和柔光构成，不出现任何字符。 anime style, cel shading, cinematic lighting, detailed face, clean lineart, film grain, best quality, masterpiece, highly detailed, sharp focus",
+   "clip": [
+    "2",
+    0
+   ]
+  }
+ },
+ "132": {
+  "class_type": "EmptySD3LatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1536,
+   "batch_size": 1
+  }
+ },
+ "133": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "seed": 1623755327,
+   "steps": 8,
+   "cfg": 1.0,
+   "sampler_name": "res_multistep",
+   "scheduler": "simple",
+   "denoise": 1.0,
+   "positive": [
+    "131",
+    0
+   ],
+   "negative": [
+    "4",
+    0
+   ],
+   "latent_image": [
+    "132",
+    0
+   ]
+  }
+ },
+ "134": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "133",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "135": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "134",
+    0
+   ],
+   "filename_prefix": "ep1/ep1_beat04"
+  }
+ },
+ "141": {
+  "class_type": "CLIPTextEncodeLumina2",
+  "inputs": {
+   "system_prompt": "superior",
+   "user_prompt": "一个19岁的中国男大学生林默，黑短发齐耳，戴细黑框眼镜，中等身材，穿着纯色连帽卫衣，表情平静克制，夜晚坐在大学宿舍书桌前，食指悬在手机屏幕上方几厘米没有落下。台灯暖光照亮他的侧脸，手机冷光打在手背。手机屏幕是均匀发亮的冷光面，上面只有纯色圆角矩形的气泡形状与柔光。暖光与冷屏光形成对比，中近景，镜头微微上摇到手部。画面中绝对不出现任何文字、字母、汉字、数字、符号、水印、logo、界面图标；所有屏幕与界面只由纯色色块和柔光构成，不出现任何字符。 anime style, cel shading, cinematic lighting, detailed face, clean lineart, film grain, best quality, masterpiece, highly detailed, sharp focus",
+   "clip": [
+    "2",
+    0
+   ]
+  }
+ },
+ "142": {
+  "class_type": "EmptySD3LatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1536,
+   "batch_size": 1
+  }
+ },
+ "143": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "seed": 1837853014,
+   "steps": 8,
+   "cfg": 1.0,
+   "sampler_name": "res_multistep",
+   "scheduler": "simple",
+   "denoise": 1.0,
+   "positive": [
+    "141",
+    0
+   ],
+   "negative": [
+    "4",
+    0
+   ],
+   "latent_image": [
+    "142",
+    0
+   ]
+  }
+ },
+ "144": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "143",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "145": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "144",
+    0
+   ],
+   "filename_prefix": "ep1/ep1_beat05"
+  }
+ },
+ "151": {
+  "class_type": "CLIPTextEncodeLumina2",
+  "inputs": {
+   "system_prompt": "superior",
+   "user_prompt": "一个19岁的中国男大学生林默，黑短发齐耳，戴细黑框眼镜，中等身材，穿着纯色连帽卫衣，表情平静克制，双手握着手机正在打字，手机屏幕是均匀的冷白发光面，只有抽象的圆角矩形轮廓和一条闪烁的细竖线光标。夜晚宿舍书桌前，台灯暖光在镜片上拉出细线，手机屏光照在脸上。侧近景，焦点在手机屏，半张脸入镜。画面中绝对不出现任何文字、字母、汉字、数字、符号、水印、logo、界面图标；所有屏幕与界面只由纯色色块和柔光构成，不出现任何字符。 anime style, cel shading, cinematic lighting, detailed face, clean lineart, film grain, best quality, masterpiece, highly detailed, sharp focus",
+   "clip": [
+    "2",
+    0
+   ]
+  }
+ },
+ "152": {
+  "class_type": "EmptySD3LatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1536,
+   "batch_size": 1
+  }
+ },
+ "153": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "seed": 1486683086,
+   "steps": 8,
+   "cfg": 1.0,
+   "sampler_name": "res_multistep",
+   "scheduler": "simple",
+   "denoise": 1.0,
+   "positive": [
+    "151",
+    0
+   ],
+   "negative": [
+    "4",
+    0
+   ],
+   "latent_image": [
+    "152",
+    0
+   ]
+  }
+ },
+ "154": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "153",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "155": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "154",
+    0
+   ],
+   "filename_prefix": "ep1/ep1_beat06"
+  }
+ },
+ "161": {
+  "class_type": "CLIPTextEncodeLumina2",
+  "inputs": {
+   "system_prompt": "superior",
+   "user_prompt": "手机屏幕的极端特写，占满画面，深色界面上浮现出一条被柔光包裹的纯色圆角矩形气泡，气泡内部完全空白，其余气泡形状虚化在背景里，浅景深，柔光晕开。画面中绝对不出现任何文字、字母、汉字、数字、符号、水印、logo、界面图标；所有屏幕与界面只由纯色色块和柔光构成，不出现任何字符。 anime style, cel shading, cinematic lighting, detailed face, clean lineart, film grain, best quality, masterpiece, highly detailed, sharp focus",
+   "clip": [
+    "2",
+    0
+   ]
+  }
+ },
+ "162": {
+  "class_type": "EmptySD3LatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1536,
+   "batch_size": 1
+  }
+ },
+ "163": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "seed": 1905175598,
+   "steps": 8,
+   "cfg": 1.0,
+   "sampler_name": "res_multistep",
+   "scheduler": "simple",
+   "denoise": 1.0,
+   "positive": [
+    "161",
+    0
+   ],
+   "negative": [
+    "4",
+    0
+   ],
+   "latent_image": [
+    "162",
+    0
+   ]
+  }
+ },
+ "164": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "163",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "165": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "164",
+    0
+   ],
+   "filename_prefix": "ep1/ep1_beat07"
+  }
+ },
+ "171": {
+  "class_type": "CLIPTextEncodeLumina2",
+  "inputs": {
+   "system_prompt": "superior",
+   "user_prompt": "一个19岁的中国男大学生林默，黑短发齐耳，戴细黑框眼镜，中等身材，穿着纯色连帽卫衣，表情平静克制，面部大特写，正对镜头，久久盯着眼前的手机屏幕没有动，手机屏幕的冷光映在他的镜片上，镜片上只有柔和的光斑与反光。表情平静、被击中但克制。夜晚宿舍，台灯暖光勾边。画面中绝对不出现任何文字、字母、汉字、数字、符号、水印、logo、界面图标；所有屏幕与界面只由纯色色块和柔光构成，不出现任何字符。 anime style, cel shading, cinematic lighting, detailed face, clean lineart, film grain, best quality, masterpiece, highly detailed, sharp focus",
+   "clip": [
+    "2",
+    0
+   ]
+  }
+ },
+ "172": {
+  "class_type": "EmptySD3LatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1536,
+   "batch_size": 1
+  }
+ },
+ "173": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "seed": 1749046119,
+   "steps": 8,
+   "cfg": 1.0,
+   "sampler_name": "res_multistep",
+   "scheduler": "simple",
+   "denoise": 1.0,
+   "positive": [
+    "171",
+    0
+   ],
+   "negative": [
+    "4",
+    0
+   ],
+   "latent_image": [
+    "172",
+    0
+   ]
+  }
+ },
+ "174": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "173",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "175": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "174",
+    0
+   ],
+   "filename_prefix": "ep1/ep1_beat08"
+  }
+ },
+ "181": {
+  "class_type": "CLIPTextEncodeLumina2",
+  "inputs": {
+   "system_prompt": "superior",
+   "user_prompt": "计算机机房，多块显示器组成画面，屏幕上只有极度简化的网络拓扑示意：圆点与方块由细线连接成网格，链路正由蓝变红并卡死，色块拥挤到近乎过载，画面带故障般的网格感与扫描线。冷色荧光灯，冷蓝色调，没有人物。重点是“系统被自己淹死”的视觉。画面中绝对不出现任何文字、字母、汉字、数字、符号、水印、logo、界面图标；所有屏幕与界面只由纯色色块和柔光构成，不出现任何字符。 cinematic, anime style, cel shading, cool color palette, grid feel, detailed, clean lineart, film grain, best quality, masterpiece, highly detailed, sharp focus",
+   "clip": [
+    "2",
+    0
+   ]
+  }
+ },
+ "182": {
+  "class_type": "EmptySD3LatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1536,
+   "batch_size": 1
+  }
+ },
+ "183": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "seed": 185590947,
+   "steps": 8,
+   "cfg": 1.0,
+   "sampler_name": "res_multistep",
+   "scheduler": "simple",
+   "denoise": 1.0,
+   "positive": [
+    "181",
+    0
+   ],
+   "negative": [
+    "4",
+    0
+   ],
+   "latent_image": [
+    "182",
+    0
+   ]
+  }
+ },
+ "184": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "183",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "185": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "184",
+    0
+   ],
+   "filename_prefix": "ep1/ep1_beat09"
+  }
+ },
+ "191": {
+  "class_type": "CLIPTextEncodeLumina2",
+  "inputs": {
+   "system_prompt": "superior",
+   "user_prompt": "夜晚大学宿舍桌面特写，一部手机屏幕朝下反扣在木桌上，机身微微震动，桌面上的水杯和笔记本随之轻颤，台灯暖黄，背景是虚化的宿舍一角。画面中绝对不出现任何文字、字母、汉字、数字、符号、水印、logo、界面图标；所有屏幕与界面只由纯色色块和柔光构成，不出现任何字符。 anime style, cel shading, cinematic lighting, detailed face, clean lineart, film grain, best quality, masterpiece, highly detailed, sharp focus",
+   "clip": [
+    "2",
+    0
+   ]
+  }
+ },
+ "192": {
+  "class_type": "EmptySD3LatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1536,
+   "batch_size": 1
+  }
+ },
+ "193": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "seed": 1018954270,
+   "steps": 8,
+   "cfg": 1.0,
+   "sampler_name": "res_multistep",
+   "scheduler": "simple",
+   "denoise": 1.0,
+   "positive": [
+    "191",
+    0
+   ],
+   "negative": [
+    "4",
+    0
+   ],
+   "latent_image": [
+    "192",
+    0
+   ]
+  }
+ },
+ "194": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "193",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "195": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "194",
+    0
+   ],
+   "filename_prefix": "ep1/ep1_beat10"
+  }
+ },
+ "201": {
+  "class_type": "CLIPTextEncodeLumina2",
+  "inputs": {
+   "system_prompt": "superior",
+   "user_prompt": "一个19岁的中国男大学生林默，黑短发齐耳，戴细黑框眼镜，中等身材，穿着纯色连帽卫衣，表情平静克制，重新把手机从桌上拿起，拇指停在屏幕侧面，神情平静而果断，手机屏幕是均匀的冷光面。夜晚宿舍，台灯暖光勾边。中近景。画面中绝对不出现任何文字、字母、汉字、数字、符号、水印、logo、界面图标；所有屏幕与界面只由纯色色块和柔光构成，不出现任何字符。 anime style, cel shading, cinematic lighting, detailed face, clean lineart, film grain, best quality, masterpiece, highly detailed, sharp focus",
+   "clip": [
+    "2",
+    0
+   ]
+  }
+ },
+ "202": {
+  "class_type": "EmptySD3LatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1536,
+   "batch_size": 1
+  }
+ },
+ "203": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "seed": 1080864614,
+   "steps": 8,
+   "cfg": 1.0,
+   "sampler_name": "res_multistep",
+   "scheduler": "simple",
+   "denoise": 1.0,
+   "positive": [
+    "201",
+    0
+   ],
+   "negative": [
+    "4",
+    0
+   ],
+   "latent_image": [
+    "202",
+    0
+   ]
+  }
+ },
+ "204": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "203",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "205": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "204",
+    0
+   ],
+   "filename_prefix": "ep1/ep1_beat11"
+  }
+ },
+ "211": {
+  "class_type": "CLIPTextEncodeLumina2",
+  "inputs": {
+   "system_prompt": "superior",
+   "user_prompt": "手机屏幕特写，深色界面上一条单独的纯色圆角矩形气泡从下方浮现在大片空白处，周围其余气泡形状虚化，屏幕冷光柔和，气氛忽然安静下来。画面中绝对不出现任何文字、字母、汉字、数字、符号、水印、logo、界面图标；所有屏幕与界面只由纯色色块和柔光构成，不出现任何字符。 anime style, cel shading, cinematic lighting, detailed face, clean lineart, film grain, best quality, masterpiece, highly detailed, sharp focus",
+   "clip": [
+    "2",
+    0
+   ]
+  }
+ },
+ "212": {
+  "class_type": "EmptySD3LatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1536,
+   "batch_size": 1
+  }
+ },
+ "213": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "seed": 1717077177,
+   "steps": 8,
+   "cfg": 1.0,
+   "sampler_name": "res_multistep",
+   "scheduler": "simple",
+   "denoise": 1.0,
+   "positive": [
+    "211",
+    0
+   ],
+   "negative": [
+    "4",
+    0
+   ],
+   "latent_image": [
+    "212",
+    0
+   ]
+  }
+ },
+ "214": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "213",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "215": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "214",
+    0
+   ],
+   "filename_prefix": "ep1/ep1_beat12"
+  }
+ },
+ "221": {
+  "class_type": "CLIPTextEncodeLumina2",
+  "inputs": {
+   "system_prompt": "superior",
+   "user_prompt": "手机屏幕特写，画面上方一个圆形头像图标由彩色渐变为灰色并略微虚化，下方是纯色的圆角矩形气泡形状，屏幕冷光偏暗，气氛沉下去。画面中绝对不出现任何文字、字母、汉字、数字、符号、水印、logo、界面图标；所有屏幕与界面只由纯色色块和柔光构成，不出现任何字符。 anime style, cel shading, cinematic lighting, detailed face, clean lineart, film grain, best quality, masterpiece, highly detailed, sharp focus",
+   "clip": [
+    "2",
+    0
+   ]
+  }
+ },
+ "222": {
+  "class_type": "EmptySD3LatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1536,
+   "batch_size": 1
+  }
+ },
+ "223": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "seed": 720171623,
+   "steps": 8,
+   "cfg": 1.0,
+   "sampler_name": "res_multistep",
+   "scheduler": "simple",
+   "denoise": 1.0,
+   "positive": [
+    "221",
+    0
+   ],
+   "negative": [
+    "4",
+    0
+   ],
+   "latent_image": [
+    "222",
+    0
+   ]
+  }
+ },
+ "224": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "223",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "225": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "224",
+    0
+   ],
+   "filename_prefix": "ep1/ep1_beat13"
+  }
+ },
+ "231": {
+  "class_type": "CLIPTextEncodeLumina2",
+  "inputs": {
+   "system_prompt": "superior",
+   "user_prompt": "夜晚大学宿舍的宽镜，一个19岁的中国男大学生林默，黑短发齐耳，戴细黑框眼镜，中等身材，穿着纯色连帽卫衣，表情平静克制，坐在书桌前伸手关掉台灯，房间沉入黑暗，只剩台灯余光落在他的侧脸上，手机屏幕已经暗下。安静克制的收尾感，画面几乎全黑。画面中绝对不出现任何文字、字母、汉字、数字、符号、水印、logo、界面图标；所有屏幕与界面只由纯色色块和柔光构成，不出现任何字符。 anime style, cel shading, cinematic lighting, detailed face, clean lineart, film grain, best quality, masterpiece, highly detailed, sharp focus",
+   "clip": [
+    "2",
+    0
+   ]
+  }
+ },
+ "232": {
+  "class_type": "EmptySD3LatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1536,
+   "batch_size": 1
+  }
+ },
+ "233": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "seed": 614808159,
+   "steps": 8,
+   "cfg": 1.0,
+   "sampler_name": "res_multistep",
+   "scheduler": "simple",
+   "denoise": 1.0,
+   "positive": [
+    "231",
+    0
+   ],
+   "negative": [
+    "4",
+    0
+   ],
+   "latent_image": [
+    "232",
+    0
+   ]
+  }
+ },
+ "234": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "233",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  }
+ },
+ "235": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "234",
+    0
+   ],
+   "filename_prefix": "ep1/ep1_beat14"
+  }
+ }
+}

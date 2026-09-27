@@ -43,12 +43,12 @@
 
   // Day 11：复制成功提示（停留约 1.6 秒后淡出，连续点击会重置，不堆叠）
   var toastTimer = null;
-  function showToast(msg) {
+  function showToast(msg, isError) {
     var root = document.getElementById("toastRoot");
     if (!root) return;
     root.innerHTML = "";
     var t = document.createElement("div");
-    t.className = "toast";
+    t.className = "toast" + (isError ? " error" : "");
     t.textContent = msg;
     root.appendChild(t);
     void t.offsetWidth;        // 强制重排以触发进入动画
@@ -58,6 +58,36 @@
       t.classList.remove("show");
       setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 250);
     }, 1600);
+  }
+
+  // 收藏交互（前端临时状态：状态保存在浏览器端，无后端、无数据库）。
+  // 用异步包装模拟未来的接口调用，使「处理中 / 禁用 / 失败」状态现在就能体现；
+  // 后续接入真实接口时，只需替换 toggleFavAsync 内部实现，UI 保持不变。
+  var favLoading = {};  // 每条正在处理中的收藏，防止重复点击
+  var forceFavError = /[?&]favfail=1\b/.test(location.search); // ?favfail=1 模拟失败，便于测试
+
+  function toggleFavAsync(it) {
+    return new Promise(function (resolve, reject) {
+      setTimeout(function () {
+        if (forceFavError) { reject(new Error("simulated fav failure")); return; }
+        var faved = window.FavStore.toggleFav(it); // 实际仍走本地存储，未来替换为接口
+        resolve(faved);
+      }, 600);
+    });
+  }
+
+  function setFavBtnState(btn, it) {
+    if (favLoading[window.FavStore.idOf(it)]) {
+      btn.classList.add("is-loading");
+      btn.disabled = true;
+      btn.textContent = "处理中…";
+      return;
+    }
+    btn.classList.remove("is-loading");
+    btn.disabled = false;
+    var fav = window.FavStore.isFav(it);
+    btn.classList.toggle("is-fav", fav);
+    btn.textContent = fav ? "★ 已收藏" : "☆ 收藏";
   }
 
   // 数据加载：真实环境会换成 fetch(...)。演示用静态数据，支持 ?fail=1 模拟失败。
@@ -139,17 +169,28 @@
       var li = document.createElement("li");
       li.className = "hot-item";
 
-      // 收藏星标
-      var fav = window.FavStore.isFav(it);
-      var star = document.createElement("button");
-      star.type = "button";
-      star.className = "star" + (fav ? " is-fav" : "");
-      star.textContent = fav ? "★" : "☆";
-      star.setAttribute("aria-label", "收藏");
-      star.addEventListener("click", function (e) {
-        e.stopPropagation();
-        window.FavStore.toggleFav(it);
-        renderList();
+      // 收藏按钮（带「处理中 / 已收藏 / 失败」状态，前端临时状态）
+      var favBtn = document.createElement("button");
+      favBtn.type = "button";
+      favBtn.className = "btn-fav-card";
+      favBtn.setAttribute("aria-label", "收藏");
+      setFavBtnState(favBtn, it);
+      favBtn.addEventListener("click", function (e) {
+        e.stopPropagation();   // 避免触发整条详情弹窗
+        if (favLoading[window.FavStore.idOf(it)]) return;   // 处理中不可重复点击
+        favLoading[window.FavStore.idOf(it)] = true;
+        setFavBtnState(favBtn, it);            // 进入「处理中…」并禁用
+        toggleFavAsync(it)
+          .then(function (faved) {
+            favLoading[window.FavStore.idOf(it)] = false;
+            setFavBtnState(favBtn, it);
+            showToast(faved ? "已收藏 ✓ " + it.title : "已取消收藏 " + it.title);
+          })
+          .catch(function () {
+            favLoading[window.FavStore.idOf(it)] = false;
+            setFavBtnState(favBtn, it);        // 失败回退到原状态，按钮恢复可点
+            showToast("收藏失败，请稍后重试", true);
+          });
       });
 
       var rank = document.createElement("span");
@@ -164,7 +205,7 @@
       heat.className = "heat";
       heat.textContent = it.heat;
 
-      li.appendChild(star);
+      li.appendChild(favBtn);
       li.appendChild(rank);
       li.appendChild(title);
       li.appendChild(heat);

@@ -3,6 +3,7 @@
 // 第 3 步：平台标签可点击切换 + 按 platform 过滤 + 当前高亮（含「全部」）。
 // 第 4 步：点列表项弹详情，含「去原平台查看」外链（新标签打开）。
 // 第 5 步：收藏 / 备注（localStorage，刷新不丢）+ 加载失败显示提示不白屏。
+// 第 6 步（Day 12）：关键词筛选——search 输入框按标题实时过滤，含无匹配提示、结果数量朗读、可访问性标签。
 (function () {
   "use strict";
 
@@ -10,6 +11,7 @@
     items: [],
     platform: "all",     // 当前选中的平台 key，"all" 表示全部
     favOnly: false,      // 是否只看收藏
+    keyword: "",         // Day 12：关键词筛选（按标题实时过滤）
     error: false         // 数据是否加载失败
   };
 
@@ -125,11 +127,20 @@
   }
 
   function filteredItems() {
+    var kw = (state.keyword || "").toLowerCase();
     return state.items.filter(function (it) {
       if (state.platform !== "all" && it.platform !== state.platform) return false;
       if (state.favOnly && !window.FavStore.isFav(it)) return false;
+      // Day 12：关键词为空时不拦截；有关键词时按标题（不区分大小写）过滤
+      if (kw && it.title.toLowerCase().indexOf(kw) === -1) return false;
       return true;
     });
+  }
+
+  // Day 12：更新结果数量（供屏幕阅读器朗读，aria-live 实时播报）
+  function setResultCount(n) {
+    var el = document.getElementById("resultCount");
+    if (el) el.textContent = "共 " + n + " 条";
   }
 
   function renderList() {
@@ -156,11 +167,19 @@
 
     var items = filteredItems();
     ul.innerHTML = "";
+    setResultCount(items.length);   // Day 12：先更新数量（含空结果与有结果两种）
 
     if (items.length === 0) {
       var empty = document.createElement("li");
       empty.className = "empty-box";
-      empty.textContent = state.favOnly ? "还没有收藏任何热搜。" : "暂无数据。";
+      // Day 12：关键词无匹配时给出明确提示，方便判断筛选是否生效
+      if (state.keyword) {
+        empty.textContent = "没有匹配「" + state.keyword + "」的热搜。";
+      } else if (state.favOnly) {
+        empty.textContent = "还没有收藏任何热搜。";
+      } else {
+        empty.textContent = "暂无数据。";
+      }
       ul.appendChild(empty);
       return;
     }
@@ -362,6 +381,15 @@
       favLink.addEventListener("click", function (e) {
         e.preventDefault();
         state.favOnly = !state.favOnly;
+        renderList();
+      });
+    }
+
+    // Day 12：关键词筛选（实时按标题过滤，清空后恢复全部）
+    var filterInput = document.getElementById("filterInput");
+    if (filterInput) {
+      filterInput.addEventListener("input", function () {
+        state.keyword = filterInput.value.trim();
         renderList();
       });
     }

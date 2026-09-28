@@ -21,7 +21,16 @@
     <div class="toolbar">
       <button class="btn-refresh" id="btnRefresh" type="button">手动刷新</button>
       <a class="btn-fav" id="btnFav" href="#">我的收藏</a>
+      <!-- Day 12：关键词筛选（带可访问标签，按标题实时过滤列表） -->
+      <div class="search-box" role="search">
+        <label class="search-label" for="filterInput">搜索热搜</label>
+        <input class="search-input" id="filterInput" type="search"
+               placeholder="按标题筛选…" aria-label="按标题筛选热搜" autocomplete="off">
+      </div>
     </div>
+
+    <!-- Day 12：筛选结果数量（屏幕阅读器可朗读，aria-live 实时播报） -->
+    <p class="result-count" id="resultCount" aria-live="polite"></p>
 
     <!-- 热搜列表（由 js/app.js 用 js/data.js 渲染） -->
     <ul class="hot-list" id="hotList"></ul>

@@ -76,6 +76,40 @@ body {
 }
 .btn-fav { color: var(--accent); }
 
+/* Day 12：关键词筛选框 + 结果数量 */
+.search-box { position: relative; margin-left: auto; }
+/* 可见标签可省，但保留语义标签供屏幕阅读器（与 input 的 aria-label 双重保障） */
+.search-label {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.search-input {
+  width: 200px;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  padding: 0.4rem 0.8rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  outline: none;
+}
+.search-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-color: var(--accent);
+}
+.result-count {
+  margin: -0.4rem 0 0.8rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 /* 手动刷新按钮：加载态（转圈 + 灰显 + 禁用），与成功/失败提示配合 */
 .btn-refresh.is-loading { opacity: .6; cursor: not-allowed; }
 .btn-refresh.is-loading::before {
@@ -359,6 +393,8 @@ body {
   .site-header h1 { font-size: 1.4rem; }
   .toolbar { flex-direction: column; gap: 0.6rem; align-items: stretch; }
   .btn-refresh, .btn-fav { width: 100%; min-height: 44px; }
+  .search-box { margin-left: 0; width: 100%; }
+  .search-input { width: 100%; }
   .hot-item { gap: 0.6rem; padding: 0.7rem 0.8rem; }
   .title { font-size: 0.98rem; }
 }

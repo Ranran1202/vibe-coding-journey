@@ -199,9 +199,9 @@
       a.classList.toggle("is-active", a.getAttribute("data-view") === view);
     });
 
-    // 面包屑 / 当前路由指示（让「地址栏」信息在页面内可见，便于核对视图）
+    // 面包屑 / 当前路由指示（让「地址栏」信息在页面内可见，便于核对视图与状态参数）
     var routeLabel = document.getElementById("routeLabel");
-    if (routeLabel) routeLabel.textContent = "#/" + view;
+    if (routeLabel) routeLabel.textContent = location.href;
 
     syncSearchScope();   // 搜索框范围提示随视图切换
     renderList();        // 重新渲染当前视图

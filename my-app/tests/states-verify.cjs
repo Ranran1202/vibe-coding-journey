@@ -92,10 +92,10 @@ function run() {
         const tabsVisible = !doc.getElementById("platformTabs").classList.contains("hidden");
 
         ok("视图切换：about 显示/列表隐藏，route 更新为 #/about",
-          aboutVisible && listHidden && routeAbout === "#/about",
+          aboutVisible && listHidden && routeAbout.indexOf("#/about") !== -1,
           "aboutVisible=" + aboutVisible + " listHidden=" + listHidden + " route=" + routeAbout);
         ok("视图切换：fav 时导航高亮且 route 为 #/fav",
-          navActive && navActive.getAttribute("data-view") === "fav" && routeFav === "#/fav",
+          navActive && navActive.getAttribute("data-view") === "fav" && routeFav.indexOf("#/fav") !== -1,
           "active=" + (navActive && navActive.getAttribute("data-view")) + " route=" + routeFav);
         ok("视图切换：回到 hot 时列表与平台标签恢复可见",
           listVisible && tabsVisible,

@@ -6,14 +6,17 @@
 // 第 6 步（Day 12）：关键词筛选——search 输入框按标题实时过滤；
 // 与平台筛选组合生效；无匹配统一显示「没有找到相关内容」（含结果数量朗读、可访问性标签）。
 // 我的收藏视图：关键词同时匹配「标题」与「我的备注」，让「我的数据对象」更易检索（见 syncSearchScope / filteredItems）。
+// Day 13：三个视图（今日热搜 / 我的收藏 / 关于）用 hash 路由切换；列表数据补齐 正常/加载/错误/空 四态。
 (function () {
   "use strict";
 
   var state = {
     items: [],
     platform: "all",     // 当前选中的平台 key，"all" 表示全部
-    favOnly: false,      // 是否只看收藏
-    keyword: "",         // Day 12：关键词筛选（按标题实时过滤）
+    favOnly: false,      // 是否只看收藏（由视图路由推导：view==="fav"）
+    keyword: "",         // Day 12：关键词筛选（按标题/备注实时过滤）
+    view: "hot",        // Day 13：当前视图（hot / fav / about）
+    loading: false,      // Day 13：列表是否正在加载
     error: false         // 数据是否加载失败
   };
 
@@ -94,17 +97,22 @@
     btn.textContent = fav ? "★ 已收藏" : "☆ 收藏";
   }
 
-  // 数据加载：真实环境会换成 fetch(...)。演示用静态数据，支持 ?fail=1 模拟失败。
+  // 数据加载：真实环境会换成 fetch(...)。演示用静态数据，支持地址栏参数触发不同状态：
+  //   ?fail=1  模拟加载失败（错误态）  ?empty=1 模拟成功但 0 条（空态）  ?slow=1 延长加载时间（便于观察加载态）
   function loadData() {
     return new Promise(function (resolve, reject) {
-      var fail = /[?&]fail=1\b/.test(location.search);
+      var params = new URLSearchParams(location.search);
+      var fail = params.get("fail") === "1";
+      var empty = params.get("empty") === "1";
+      var slow = params.get("slow") === "1";
+      var delay = slow ? 2000 : 120;
       setTimeout(function () {
         if (fail) {
           reject(new Error("模拟加载失败"));
           return;
         }
-        resolve(window.HOT_DATA || []);
-      }, 120);
+        resolve(empty ? [] : (window.HOT_DATA || []));
+      }, delay);
     });
   }
 
@@ -165,9 +173,54 @@
     if (el) el.textContent = "共 " + n + " 条";
   }
 
+  // Day 13：视图路由（hash 路由，无需后端 / 路由库）。切换视图即切换 hash，
+  // 地址栏可见、可直接分享、可用浏览器后退返回——满足「页面之间怎么切换」的最小可行方案。
+  function currentRoute() {
+    var h = (location.hash || "#/hot").replace(/^#/, "");
+    if (h.indexOf("/fav") === 0) return "fav";
+    if (h.indexOf("/about") === 0) return "about";
+    return "hot";
+  }
+
+  function applyRoute() {
+    var view = currentRoute();
+    state.view = view;
+    state.favOnly = (view === "fav");   // 我的收藏视图 = 仅看收藏
+
+    var listView = document.getElementById("view-list");
+    var aboutView = document.getElementById("view-about");
+    var tabs = document.getElementById("platformTabs");
+    if (listView) listView.classList.toggle("hidden", view === "about");
+    if (aboutView) aboutView.classList.toggle("hidden", view !== "about");
+    if (tabs) tabs.classList.toggle("hidden", view !== "hot");   // 平台标签仅「今日热搜」视图显示
+
+    // 主导航高亮（可访问导航标签）
+    Array.prototype.forEach.call(document.querySelectorAll(".nav-link"), function (a) {
+      a.classList.toggle("is-active", a.getAttribute("data-view") === view);
+    });
+
+    // 面包屑 / 当前路由指示（让「地址栏」信息在页面内可见，便于核对视图）
+    var routeLabel = document.getElementById("routeLabel");
+    if (routeLabel) routeLabel.textContent = "#/" + view;
+
+    syncSearchScope();   // 搜索框范围提示随视图切换
+    renderList();        // 重新渲染当前视图
+  }
+
   function renderList() {
     var ul = document.getElementById("hotList");
     if (!ul) return;
+
+    // Day 13：加载中状态（spinner），优先于其余分支
+    if (state.loading) {
+      ul.innerHTML = "";
+      var loadingBox = document.createElement("li");
+      loadingBox.className = "loading-box";
+      loadingBox.innerHTML = '<span class="spinner" aria-hidden="true"></span> 加载中…';
+      ul.appendChild(loadingBox);
+      setResultCount(0);
+      return;
+    }
 
     // 加载失败：显示提示 + 重试，不白屏
     if (state.error) {
@@ -272,10 +325,6 @@
 
       ul.appendChild(li);
     });
-
-    // 收藏入口高亮态
-    var favLink = document.getElementById("btnFav");
-    if (favLink) favLink.classList.toggle("is-active", state.favOnly);
   }
 
   function openDetail(it) {
@@ -378,16 +427,20 @@
   function refresh() {
     if (refreshing) return;                         // 处理中禁止重复触发
     refreshing = true;
+    state.loading = true;
     setRefreshBtn(true);                            // 进入「刷新中…」并禁用
+    renderList();                                  // Day 13：立即显示「加载中」状态
     loadData().then(function (data) {
       state.items = data;
       state.error = false;
+      state.loading = false;
       renderList();
       refreshing = false;
       setRefreshBtn(false);                         // 恢复按钮
       showToast("已刷新 ✓ 共 " + data.length + " 条");
     }).catch(function () {
       state.error = true;
+      state.loading = false;
       renderList();                                 // 显示失败提示（错误框 + 重试）
       refreshing = false;
       setRefreshBtn(false);                         // 恢复按钮
@@ -399,17 +452,11 @@
     var refreshBtn = document.getElementById("btnRefresh");
     if (refreshBtn) refreshBtn.addEventListener("click", function () { refresh(); });
 
-    var favLink = document.getElementById("btnFav");
-    if (favLink) {
-      favLink.addEventListener("click", function (e) {
-        e.preventDefault();
-        state.favOnly = !state.favOnly;
-        syncSearchScope();   // 切换搜索框范围提示（我的收藏 ↔ 全部）
-        renderList();
-      });
-    }
+    // 余力加练：返回上一页（浏览器历史后退）
+    var backBtn = document.getElementById("btnBack");
+    if (backBtn) backBtn.addEventListener("click", function () { history.back(); });
 
-    // Day 12：关键词筛选（实时按标题过滤，清空后恢复全部）
+    // Day 12：关键词筛选（实时按标题/备注过滤，清空后恢复全部）
     var filterInput = document.getElementById("filterInput");
     if (filterInput) {
       filterInput.addEventListener("input", function () {
@@ -422,9 +469,12 @@
       if (e.key === "Escape") closeModal();
     });
 
-    syncSearchScope();   // 按初始视图设置搜索框范围提示
+    // Day 13：hash 路由——点击导航的 #/xxx 链接即切换视图
+    window.addEventListener("hashchange", applyRoute);
+
     renderTabs();
     refresh();
+    applyRoute();   // 按初始 hash 决定显示哪个视图
   }
 
   if (document.readyState === "loading") {

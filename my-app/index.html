@@ -11,29 +11,54 @@
   <header class="site-header">
     <h1>今日热搜</h1>
     <p class="subtitle">一眼看完全网在热什么</p>
+    <!-- 余力加练：返回上一页（history.back） -->
+    <button class="btn-back" id="btnBack" type="button">← 返回</button>
   </header>
 
-  <!-- 平台切换标签（第 3 步起由 js/app.js 从 config.js 生成，含「全部」） -->
-  <nav class="platform-tabs" id="platformTabs" aria-label="平台切换"></nav>
+  <!-- 主导航：三个视图切换（Day 13，hash 路由；可访问导航标签） -->
+  <nav class="main-nav" id="mainNav" aria-label="主导航">
+    <a class="nav-link" href="#/hot" data-view="hot">今日热搜</a>
+    <a class="nav-link" href="#/fav" data-view="fav">我的收藏</a>
+    <a class="nav-link" href="#/about" data-view="about">关于</a>
+  </nav>
 
-  <main class="container">
-    <!-- 工具条：刷新按钮 + 我的收藏入口（第 5 步收藏入口可切换高亮） -->
+  <!-- 面包屑 / 当前路由（可见的「地址栏」指示，便于核对视图） -->
+  <p class="breadcrumb" id="breadcrumb" aria-live="polite">
+    当前位置：<span id="routeLabel">#/hot</span>
+  </p>
+
+  <!-- 视图①：列表（今日热搜 / 我的收藏 共用 #hotList，按 hash 切换 favOnly） -->
+  <main class="container view" id="view-list">
+    <!-- 平台切换标签（仅「今日热搜」视图显示） -->
+    <nav class="platform-tabs" id="platformTabs" aria-label="平台切换"></nav>
+
     <div class="toolbar">
       <button class="btn-refresh" id="btnRefresh" type="button">手动刷新</button>
-      <a class="btn-fav" id="btnFav" href="#">我的收藏</a>
-      <!-- Day 12：关键词筛选（带可访问标签，按标题实时过滤列表） -->
+      <!-- 关键词筛选（带可访问标签，按标题/备注实时过滤列表） -->
       <div class="search-box" role="search">
-        <label class="search-label" for="filterInput">搜索热搜</label>
+        <label class="search-label" for="filterInput">搜索</label>
         <input class="search-input" id="filterInput" type="search"
                placeholder="按标题筛选…" aria-label="按标题筛选热搜" autocomplete="off">
       </div>
     </div>
 
-    <!-- Day 12：筛选结果数量（屏幕阅读器可朗读，aria-live 实时播报） -->
+    <!-- 筛选结果数量（屏幕阅读器可朗读，aria-live 实时播报） -->
     <p class="result-count" id="resultCount" aria-live="polite"></p>
 
-    <!-- 热搜列表（由 js/app.js 用 js/data.js 渲染） -->
+    <!-- 列表（由 js/app.js 用 js/data.js 渲染；支持 正常/加载/错误/空 四态） -->
     <ul class="hot-list" id="hotList"></ul>
+  </main>
+
+  <!-- 视图②：关于（静态信息页，用于演示独立视图切换） -->
+  <main class="container view hidden" id="view-about">
+    <h2>关于</h2>
+    <p>这是一个纯静态演示应用，数据均为示例。本页用于演示「独立视图切换」——它不含列表，因此不会进入加载/错误等数据状态。</p>
+    <ul class="about-list">
+      <li>视图切换采用 <strong>hash 路由</strong>（#/hot、#/fav、#/about），无需后端与服务端路由。</li>
+      <li>列表数据补齐了 <strong>正常 / 加载 / 错误 / 空</strong> 四种状态，可用地址栏参数触发：
+        <code>?slow=1</code>（加载中）、<code>?fail=1</code>（错误）、<code>?empty=1</code>（空）。</li>
+      <li>「我的收藏」视图下的关键词筛选会同时匹配<strong>标题与备注</strong>。</li>
+    </ul>
   </main>
 
   <footer class="site-footer">
@@ -43,7 +68,7 @@
   <!-- 详情弹窗挂载点（默认隐藏） -->
   <div id="modalRoot" class="hidden"></div>
 
-  <!-- 复制成功提示挂载点（Day 11） -->
+  <!-- 复制成功提示挂载点 -->
   <div id="toastRoot"></div>
 
   <!-- 数据层：平台清单 / 示例热搜 / 收藏存储 / 渲染逻辑 -->

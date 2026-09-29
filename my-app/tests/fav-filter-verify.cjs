@@ -42,8 +42,9 @@ function run() {
       input.dispatchEvent(new window.Event("input", { bubbles: true }));
     };
     const enterFav = () => {
-      const link = doc.getElementById("btnFav");
-      link.click();   // 切换 state.favOnly 并重新渲染
+      // Day 13：通过 hash 路由进入「我的收藏」视图（替代原 #btnFav 切换）
+      window.location.hash = "#/fav";
+      window.dispatchEvent(new window.Event("hashchange"));
     };
 
     // 选取两条真实数据作为「我的收藏」

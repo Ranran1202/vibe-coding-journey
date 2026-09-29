@@ -484,6 +484,51 @@ body {
   font-size: 0.85em;
 }
 
+/* Day 14：平台列表页（独立视图） */
+.view-desc { color: var(--muted); font-size: 0.85rem; margin: 0.2rem 0 1rem; }
+.platform-list { list-style: none; margin: 0; padding: 0; }
+.platform-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 0.85rem;
+  transition: border-color .15s ease;
+}
+.platform-card:hover { border-color: var(--accent); }
+.platform-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.95rem 1rem;
+  text-decoration: none;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+.platform-link:hover { color: var(--accent); }
+.platform-count { color: var(--muted); font-size: 0.82rem; font-weight: 400; }
+
+/* Day 14：热搜详情页（独立视图） */
+.detail-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.4rem 1.4rem 1.6rem;
+}
+.detail-back {
+  display: inline-block;
+  margin-bottom: 1rem;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.detail-back:hover { text-decoration: underline; }
+.detail-rank { margin: 0; color: var(--accent); font-weight: 700; font-size: 0.95rem; }
+.detail-title { margin: 0.3rem 0 0.5rem; font-size: 1.3rem; line-height: 1.4; }
+.detail-meta { margin: 0 0 1rem; color: var(--muted); font-size: 0.9rem; }
+.detail-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; margin: 1rem 0; }
+
 /* 手机适配 */
 @media (max-width: 480px) {
   .site-header h1 { font-size: 1.4rem; }
@@ -496,4 +541,6 @@ body {
   .main-nav { gap: 0.4rem; }
   .nav-link { min-height: 44px; flex: 1 1 auto; }
   .btn-back { min-height: 44px; }
+  .platform-link { min-height: 44px; }
+  .detail-actions .btn-go, .detail-actions .btn-fav-toggle { min-height: 44px; }
 }

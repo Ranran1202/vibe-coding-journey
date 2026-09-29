@@ -1,12 +1,14 @@
 // my-app/js/app.js
 // 第 2 步：把 js/data.js 的 HOT_DATA 渲染成列表（排名 / 标题 / 热度）。
 // 第 3 步：平台标签可点击切换 + 按 platform 过滤 + 当前高亮（含「全部」）。
-// 第 4 步：点列表项弹详情，含「去原平台查看」外链（新标签打开）。
+// 第 4 步：点列表项进入详情页，含「去原平台查看」外链（新标签打开）。
 // 第 5 步：收藏 / 备注（localStorage，刷新不丢）+ 加载失败显示提示不白屏。
 // 第 6 步（Day 12）：关键词筛选——search 输入框按标题实时过滤；
 // 与平台筛选组合生效；无匹配统一显示「没有找到相关内容」（含结果数量朗读、可访问性标签）。
 // 我的收藏视图：关键词同时匹配「标题」与「我的备注」，让「我的数据对象」更易检索（见 syncSearchScope / filteredItems）。
 // Day 13：三个视图（今日热搜 / 我的收藏 / 关于）用 hash 路由切换；列表数据补齐 正常/加载/错误/空 四态。
+// Day 14：按 PRD 实现 3 个可独立访问视图（首页 / 平台列表页 / 热搜详情页），列表数据补齐
+//         加载中 / 加载成功 / 没有结果 / 请求失败 四种状态；详情页由弹窗改为独立路由视图。
 (function () {
   "use strict";
 
@@ -15,10 +17,14 @@
     platform: "all",     // 当前选中的平台 key，"all" 表示全部
     favOnly: false,      // 是否只看收藏（由视图路由推导：view==="fav"）
     keyword: "",         // Day 12：关键词筛选（按标题/备注实时过滤）
-    view: "hot",        // Day 13：当前视图（hot / fav / about）
-    loading: false,      // Day 13：列表是否正在加载
-    error: false         // 数据是否加载失败
+    view: "home",        // 当前视图：home / fav / platforms / detail / about
+    detailId: null,      // 详情页对应的热搜 id（platform-rank）
+    loading: false,      // 首页/收藏列表是否正在加载
+    error: false         // 首页/收藏列表是否加载失败
   };
+
+  // 平台列表页独立的数据状态（与首页列表互不干扰，便于各自演示四态）
+  var pState = { loading: false, error: false, items: [] };
 
   function platformName(key) {
     var list = window.PLATFORMS || [];
@@ -173,38 +179,72 @@
     if (el) el.textContent = "共 " + n + " 条";
   }
 
-  // Day 13：视图路由（hash 路由，无需后端 / 路由库）。切换视图即切换 hash，
-  // 地址栏可见、可直接分享、可用浏览器后退返回——满足「页面之间怎么切换」的最小可行方案。
+  // Day 14：视图路由（hash 路由，无需后端 / 路由库）。3 个可独立访问视图：
+  //   #/home        首页（热搜列表）
+  //   #/platforms   平台列表页
+  //   #/detail/:id  热搜详情页（id = 平台-排名，如 weibo-1）
+  //   #/fav         我的收藏   #/about  关于
+  // 切换视图即切换 hash，地址栏可见、可直接分享、可用浏览器后退——满足「页面之间怎么切换」。
+  function itemId(it) { return it.platform + "-" + it.rank; }
+  function findItemById(id) {
+    var data = window.HOT_DATA || [];
+    for (var i = 0; i < data.length; i++) if (itemId(data[i]) === id) return data[i];
+    return null;
+  }
+
   function currentRoute() {
-    var h = (location.hash || "#/hot").replace(/^#/, "");
+    var h = (location.hash || "#/home").replace(/^#/, "");
+    if (h.indexOf("/detail/") === 0) return "detail";
     if (h.indexOf("/fav") === 0) return "fav";
+    if (h.indexOf("/platforms") === 0) return "platforms";
     if (h.indexOf("/about") === 0) return "about";
-    return "hot";
+    return "home";
+  }
+
+  function toggleView(id, show) {
+    var el = document.getElementById(id);
+    if (el) el.classList.toggle("hidden", !show);
   }
 
   function applyRoute() {
     var view = currentRoute();
     state.view = view;
     state.favOnly = (view === "fav");   // 我的收藏视图 = 仅看收藏
+    if (view === "detail") {
+      var m = (location.hash || "").match(/\/detail\/([^?#]+)/);
+      state.detailId = m ? decodeURIComponent(m[1]) : null;
+    }
 
-    var listView = document.getElementById("view-list");
-    var aboutView = document.getElementById("view-about");
+    // 同一时刻只显示一个视图容器
+    toggleView("view-list", view === "home" || view === "fav");
+    toggleView("view-platforms", view === "platforms");
+    toggleView("view-detail", view === "detail");
+    toggleView("view-about", view === "about");
+
+    // 平台标签仅「首页」视图显示（我的收藏不显示平台切换）
     var tabs = document.getElementById("platformTabs");
-    if (listView) listView.classList.toggle("hidden", view === "about");
-    if (aboutView) aboutView.classList.toggle("hidden", view !== "about");
-    if (tabs) tabs.classList.toggle("hidden", view !== "hot");   // 平台标签仅「今日热搜」视图显示
+    if (tabs) tabs.classList.toggle("hidden", view !== "home");
 
     // 主导航高亮（可访问导航标签）
     Array.prototype.forEach.call(document.querySelectorAll(".nav-link"), function (a) {
       a.classList.toggle("is-active", a.getAttribute("data-view") === view);
     });
 
-    // 面包屑 / 当前路由指示（让「地址栏」信息在页面内可见，便于核对视图与状态参数）
+    // 地址栏指示（页面内可见的完整地址，便于核对视图与状态参数）
     var routeLabel = document.getElementById("routeLabel");
     if (routeLabel) routeLabel.textContent = location.href;
 
-    syncSearchScope();   // 搜索框范围提示随视图切换
-    renderList();        // 重新渲染当前视图
+    // 按视图分发渲染
+    if (view === "detail") {
+      renderDetail();
+    } else if (view === "platforms") {
+      // 首次进入且无数据时触发加载；否则直接渲染已有状态（含四态）
+      if (pState.items.length === 0 && !pState.loading && !pState.error) refreshPlatforms();
+      else renderPlatforms();
+    } else {
+      syncSearchScope();   // 搜索框范围提示随视图切换
+      renderList();        // 重新渲染当前列表视图
+    }
   }
 
   function renderList() {
@@ -321,50 +361,68 @@
       });
       li.appendChild(copyBtn);
 
-      li.addEventListener("click", function () { openDetail(it); });
+      li.addEventListener("click", function () { goDetail(it); });
 
       ul.appendChild(li);
     });
   }
 
-  function openDetail(it) {
-    var root = document.getElementById("modalRoot");
+  // 进入热搜详情页（独立路由视图，替代原弹窗）
+  function goDetail(it) {
+    location.hash = "#/detail/" + encodeURIComponent(itemId(it));
+  }
+
+  // 热搜详情页渲染（#/detail/:id 可直接访问，数据来自静态 HOT_DATA）
+  function renderDetail() {
+    var root = document.getElementById("detailContent");
     if (!root) return;
     root.innerHTML = "";
 
-    var overlay = document.createElement("div");
-    overlay.className = "modal-overlay";
+    var it = state.detailId ? findItemById(state.detailId) : null;
+
+    // 找不到该条热搜（链接失效 / id 错误）→ 明确反馈，不白屏
+    if (!it) {
+      var nf = document.createElement("p");
+      nf.className = "empty-box";
+      nf.textContent = "没有找到这条热搜（可能链接已失效）。";
+      root.appendChild(nf);
+      return;
+    }
 
     var card = document.createElement("div");
-    card.className = "modal-card";
+    card.className = "detail-card";
 
-    var close = document.createElement("button");
-    close.type = "button";
-    close.className = "modal-close";
-    close.textContent = "×";
-    close.setAttribute("aria-label", "关闭");
-    close.addEventListener("click", closeModal);
+    var back = document.createElement("a");
+    back.className = "detail-back";
+    back.href = "#/home";
+    back.textContent = "← 返回热搜列表";
+    card.appendChild(back);
+
+    var rank = document.createElement("p");
+    rank.className = "detail-rank";
+    rank.textContent = "排名第 " + it.rank;
+    card.appendChild(rank);
 
     var h = document.createElement("h2");
-    h.className = "modal-title";
+    h.className = "detail-title";
     h.textContent = it.title;
+    card.appendChild(h);
 
     var meta = document.createElement("p");
-    meta.className = "modal-meta";
-    meta.textContent = "排名 " + it.rank + " · 热度 " + it.heat + " · 来源 " + platformName(it.platform);
+    meta.className = "detail-meta";
+    meta.textContent = "热度 " + it.heat + " · 来源 " + platformName(it.platform);
+    card.appendChild(meta);
 
     // 去原平台查看（新标签打开外链）
+    var actions = document.createElement("div");
+    actions.className = "detail-actions";
     var go = document.createElement("a");
     go.className = "btn-go";
     go.href = it.url;
     go.target = "_blank";
     go.rel = "noopener";
     go.textContent = "去原平台查看";
-
-    card.appendChild(close);
-    card.appendChild(h);
-    card.appendChild(meta);
-    card.appendChild(go);
+    actions.appendChild(go);
 
     // 收藏切换
     var fav = window.FavStore.isFav(it);
@@ -374,10 +432,11 @@
     favBtn.textContent = fav ? "★ 已收藏" : "☆ 收藏";
     favBtn.addEventListener("click", function () {
       window.FavStore.toggleFav(it);
-      closeModal();
-      renderList();
+      renderDetail();        // 刷新详情页状态
+      if (state.view === "home" || state.view === "fav") renderList();
     });
-    card.appendChild(favBtn);
+    actions.appendChild(favBtn);
+    card.appendChild(actions);
 
     // 备注输入（localStorage 持久化）
     var noteWrap = document.createElement("div");
@@ -396,20 +455,7 @@
     noteWrap.appendChild(note);
     card.appendChild(noteWrap);
 
-    overlay.appendChild(card);
-    overlay.addEventListener("click", function (e) {
-      if (e.target === overlay) closeModal();
-    });
-    root.appendChild(overlay);
-    root.classList.remove("hidden");
-  }
-
-  function closeModal() {
-    var root = document.getElementById("modalRoot");
-    if (root) {
-      root.innerHTML = "";
-      root.classList.add("hidden");
-    }
+    root.appendChild(card);
   }
 
   // 手动刷新：带「加载中 / 禁用 / 成功 / 失败」状态的全局交互
@@ -448,6 +494,110 @@
     });
   }
 
+  // 平台列表页数据加载（与首页列表独立；支持 ?slow / ?fail / ?empty 触发四态）
+  function loadPlatforms() {
+    return new Promise(function (resolve, reject) {
+      var params = new URLSearchParams(location.search);
+      var fail = params.get("fail") === "1";
+      var empty = params.get("empty") === "1";
+      var slow = params.get("slow") === "1";
+      var delay = slow ? 2000 : 120;
+      setTimeout(function () {
+        if (fail) { reject(new Error("模拟加载失败")); return; }
+        resolve(empty ? [] : (window.PLATFORMS || []));
+      }, delay);
+    });
+  }
+
+  function refreshPlatforms() {
+    pState.loading = true;
+    pState.error = false;
+    renderPlatforms();                  // 立即显示「加载中」
+    loadPlatforms()
+      .then(function (data) {
+        pState.items = data;
+        pState.error = false;
+        pState.loading = false;
+        renderPlatforms();
+      })
+      .catch(function () {
+        pState.error = true;
+        pState.loading = false;
+        renderPlatforms();              // 显示错误框 + 重试
+      });
+  }
+
+  function renderPlatforms() {
+    var ul = document.getElementById("platformList");
+    if (!ul) return;
+
+    // 加载中状态
+    if (pState.loading) {
+      ul.innerHTML = "";
+      var loadingBox = document.createElement("li");
+      loadingBox.className = "loading-box";
+      loadingBox.innerHTML = '<span class="spinner" aria-hidden="true"></span> 加载中…';
+      ul.appendChild(loadingBox);
+      return;
+    }
+
+    // 请求失败状态
+    if (pState.error) {
+      ul.innerHTML = "";
+      var box = document.createElement("li");
+      box.className = "error-box";
+      var p = document.createElement("p");
+      p.textContent = "暂时拿不到平台数据，请稍后重试。";
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn-retry";
+      btn.textContent = "重试";
+      btn.addEventListener("click", function () { refreshPlatforms(); });
+      box.appendChild(p);
+      box.appendChild(btn);
+      ul.appendChild(box);
+      return;
+    }
+
+    var items = pState.items;
+    ul.innerHTML = "";
+
+    // 没有结果状态
+    if (items.length === 0) {
+      var empty = document.createElement("li");
+      empty.className = "empty-box";
+      empty.textContent = "没有结果";
+      ul.appendChild(empty);
+      return;
+    }
+
+    // 加载成功状态
+    items.forEach(function (pl) {
+      var li = document.createElement("li");
+      li.className = "platform-card";
+
+      var a = document.createElement("a");
+      a.className = "platform-link";
+      a.href = "#/home";
+      // 点击后进入首页，并预选该平台（在 hashchange 前写入 state，applyRoute 渲染时生效）
+      a.addEventListener("click", function () { state.platform = pl.key; });
+
+      var name = document.createElement("span");
+      name.className = "platform-name";
+      name.textContent = pl.name;
+
+      var count = document.createElement("span");
+      count.className = "platform-count";
+      var n = (window.HOT_DATA || []).filter(function (d) { return d.platform === pl.key; }).length;
+      count.textContent = n + " 条热搜";
+
+      a.appendChild(name);
+      a.appendChild(count);
+      li.appendChild(a);
+      ul.appendChild(li);
+    });
+  }
+
   function init() {
     var refreshBtn = document.getElementById("btnRefresh");
     if (refreshBtn) refreshBtn.addEventListener("click", function () { refresh(); });
@@ -465,16 +615,13 @@
       });
     }
 
-    document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") closeModal();
-    });
-
-    // Day 13：hash 路由——点击导航的 #/xxx 链接即切换视图
+    // Day 14：hash 路由——点击导航的 #/xxx 链接即切换视图
     window.addEventListener("hashchange", applyRoute);
 
     renderTabs();
-    refresh();
-    applyRoute();   // 按初始 hash 决定显示哪个视图
+    applyRoute();   // 按初始 hash 决定显示哪个视图并触发对应数据加载
+    // 首页 / 我的收藏 走 refresh 加载热搜列表（平台列表页由 applyRoute 内部惰性加载）
+    if (state.view !== "platforms") refresh();
   }
 
   if (document.readyState === "loading") {

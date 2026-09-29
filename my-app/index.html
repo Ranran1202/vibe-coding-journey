@@ -15,9 +15,10 @@
     <button class="btn-back" id="btnBack" type="button">← 返回</button>
   </header>
 
-  <!-- 主导航：三个视图切换（Day 13，hash 路由；可访问导航标签） -->
+  <!-- 主导航：可独立访问视图切换（hash 路由；可访问导航标签） -->
   <nav class="main-nav" id="mainNav" aria-label="主导航">
-    <a class="nav-link" href="#/hot" data-view="hot">今日热搜</a>
+    <a class="nav-link" href="#/home" data-view="home">首页</a>
+    <a class="nav-link" href="#/platforms" data-view="platforms">平台</a>
     <a class="nav-link" href="#/fav" data-view="fav">我的收藏</a>
     <a class="nav-link" href="#/about" data-view="about">关于</a>
   </nav>
@@ -49,24 +50,36 @@
     <ul class="hot-list" id="hotList"></ul>
   </main>
 
-  <!-- 视图②：关于（静态信息页，用于演示独立视图切换） -->
+  <!-- 视图②：平台列表页（独立视图，列出各平台，点击进入该平台首页） -->
+  <main class="container view hidden" id="view-platforms">
+    <h2>平台列表</h2>
+    <p class="view-desc">选择平台，查看该平台的热搜榜单。列表同样具备「加载中 / 加载成功 / 没有结果 / 请求失败」四种状态。</p>
+    <!-- 平台卡片列表（由 js/app.js 渲染，支持四态） -->
+    <ul class="platform-list" id="platformList"></ul>
+  </main>
+
+  <!-- 视图③：热搜详情页（独立视图，按 #/detail/:id 直接访问） -->
+  <main class="container view hidden" id="view-detail">
+    <div id="detailContent"></div>
+  </main>
+
+  <!-- 视图④：关于（静态信息页） -->
   <main class="container view hidden" id="view-about">
     <h2>关于</h2>
-    <p>这是一个纯静态演示应用，数据均为示例。本页用于演示「独立视图切换」——它不含列表，因此不会进入加载/错误等数据状态。</p>
+    <p>这是一个纯静态演示应用，数据均为示例。本页用于说明「可独立访问的三视图」结构。</p>
     <ul class="about-list">
-      <li>视图切换采用 <strong>hash 路由</strong>（#/hot、#/fav、#/about），无需后端与服务端路由。</li>
-      <li>列表数据补齐了 <strong>正常 / 加载 / 错误 / 空</strong> 四种状态，可用地址栏参数触发：
-        <code>?slow=1</code>（加载中）、<code>?fail=1</code>（错误）、<code>?empty=1</code>（空）。</li>
-      <li>「我的收藏」视图下的关键词筛选会同时匹配<strong>标题与备注</strong>。</li>
+      <li><strong>首页</strong>（<code>#/home</code>）：热搜列表，支持平台标签切换与关键词筛选。</li>
+      <li><strong>平台列表页</strong>（<code>#/platforms</code>）：列出各平台，点击进入对应平台首页。</li>
+      <li><strong>热搜详情页</strong>（<code>#/detail/:id</code>，如 <code>#/detail/weibo-1</code>）：单条热搜的排名/标题/热度/来源/原链接/收藏/备注，可独立打开。</li>
+      <li>三个列表类视图（首页、平台列表页、我的收藏）均补齐 <strong>加载中 / 加载成功 / 没有结果 / 请求失败</strong> 四种状态，可用地址栏参数触发：
+        <code>?slow=1</code>（加载中）、<code>?fail=1</code>（请求失败）、<code>?empty=1</code>（没有结果）。</li>
+      <li>「我的收藏」视图（<code>#/fav</code>）下的关键词筛选会同时匹配<strong>标题与备注</strong>。</li>
     </ul>
   </main>
 
   <footer class="site-footer">
     <p>纯静态演示 · 数据均为示例</p>
   </footer>
-
-  <!-- 详情弹窗挂载点（默认隐藏） -->
-  <div id="modalRoot" class="hidden"></div>
 
   <!-- 复制成功提示挂载点 -->
   <div id="toastRoot"></div>

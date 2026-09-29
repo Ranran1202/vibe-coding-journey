@@ -69,8 +69,8 @@ function run() {
     const emptyBox = doc.querySelector("#hotList .empty-box");
     ok("无结果：列表为空", r2.length === 0, "当前 " + r2.length + " 条");
     ok(
-      "无结果：显示「没有匹配」提示",
-      !!emptyBox && emptyBox.textContent.indexOf("没有匹配") !== -1,
+      "无结果：显示「没有找到相关内容」提示",
+      !!emptyBox && emptyBox.textContent.indexOf("没有找到相关内容") !== -1,
       emptyBox ? "提示：" + emptyBox.textContent : "未找到空状态节点"
     );
     ok("无结果：结果数量为 0", /共\s*0\s*条/.test(countEl.textContent), "数量文本：" + countEl.textContent);

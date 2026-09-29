@@ -3,7 +3,9 @@
 // 第 3 步：平台标签可点击切换 + 按 platform 过滤 + 当前高亮（含「全部」）。
 // 第 4 步：点列表项弹详情，含「去原平台查看」外链（新标签打开）。
 // 第 5 步：收藏 / 备注（localStorage，刷新不丢）+ 加载失败显示提示不白屏。
-// 第 6 步（Day 12）：关键词筛选——search 输入框按标题实时过滤，含无匹配提示、结果数量朗读、可访问性标签。
+// 第 6 步（Day 12）：关键词筛选——search 输入框按标题实时过滤；
+// 与平台筛选组合生效；无匹配统一显示「没有找到相关内容」（含结果数量朗读、可访问性标签）。
+// 我的收藏视图：关键词同时匹配「标题」与「我的备注」，让「我的数据对象」更易检索（见 syncSearchScope / filteredItems）。
 (function () {
   "use strict";
 
@@ -132,9 +134,29 @@
       if (state.platform !== "all" && it.platform !== state.platform) return false;
       if (state.favOnly && !window.FavStore.isFav(it)) return false;
       // Day 12：关键词为空时不拦截；有关键词时按标题（不区分大小写）过滤
-      if (kw && it.title.toLowerCase().indexOf(kw) === -1) return false;
+      if (kw) {
+        var titleHit = it.title.toLowerCase().indexOf(kw) !== -1;
+        // 我的收藏页：关键词同时匹配「我的备注」，让「我的数据对象」更易检索；
+        // 主列表（非收藏）仍只按标题匹配，保持 Day 12 已确认行为不变。
+        var noteHit = state.favOnly && window.FavStore.getNote(it).toLowerCase().indexOf(kw) !== -1;
+        if (!titleHit && !noteHit) return false;
+      }
       return true;
     });
+  }
+
+  // 我的收藏页：搜索框范围随视图切换（结果规则的可见提示）。
+  // 进入「我的收藏」后，占位文案与可访问名称提示「标题或备注」；退出恢复默认。
+  function syncSearchScope() {
+    var input = document.getElementById("filterInput");
+    if (!input) return;
+    if (state.favOnly) {
+      input.placeholder = "在我的收藏中搜索（标题或备注）…";
+      input.setAttribute("aria-label", "在我的收藏中按标题或备注筛选");
+    } else {
+      input.placeholder = "按标题筛选…";
+      input.setAttribute("aria-label", "按标题筛选热搜");
+    }
   }
 
   // Day 12：更新结果数量（供屏幕阅读器朗读，aria-live 实时播报）
@@ -172,11 +194,12 @@
     if (items.length === 0) {
       var empty = document.createElement("li");
       empty.className = "empty-box";
-      // Day 12：关键词无匹配时给出明确提示，方便判断筛选是否生效
-      if (state.keyword) {
-        empty.textContent = "没有匹配「" + state.keyword + "」的热搜。";
-      } else if (state.favOnly) {
+      // 关键词 / 平台筛选无匹配时，统一显示规范文案「没有找到相关内容」；
+      // 收藏空态保持原提示，其余（纯数据缺失）显示「暂无数据」。
+      if (state.favOnly && !state.keyword && state.platform === "all") {
         empty.textContent = "还没有收藏任何热搜。";
+      } else if (state.keyword || state.platform !== "all") {
+        empty.textContent = "没有找到相关内容";
       } else {
         empty.textContent = "暂无数据。";
       }
@@ -381,6 +404,7 @@
       favLink.addEventListener("click", function (e) {
         e.preventDefault();
         state.favOnly = !state.favOnly;
+        syncSearchScope();   // 切换搜索框范围提示（我的收藏 ↔ 全部）
         renderList();
       });
     }
@@ -398,6 +422,7 @@
       if (e.key === "Escape") closeModal();
     });
 
+    syncSearchScope();   // 按初始视图设置搜索框范围提示
     renderTabs();
     refresh();
   }

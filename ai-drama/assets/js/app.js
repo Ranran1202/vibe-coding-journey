@@ -326,7 +326,19 @@
   window.addEventListener("hashchange", onRouteChange);
 
   /* ---------- 状态演示：给非技术真人测试者，免改 URL 也能看四态 ---------- */
+  /* 点按钮时把对应参数同步进地址，方便「截图里地址与状态一致」且可复制复现。
+     http(s) 下可用；file:// 下浏览器禁止脚本改地址，catch 住静默跳过，不影响演示。 */
+  function syncUrl(name) {
+    var map = { loading: "slow", empty: "empty", error: "fail", loaded: "" };
+    var key = (name in map) ? map[name] : "";
+    try {
+      var base = location.href.split("#")[0].split("?")[0];
+      history.replaceState(null, "", base + (key ? "?" + key + "=1" : "") + "#/episodes");
+    } catch (e) { /* file:// 或受限环境：忽略 */ }
+  }
+
   function runDemo(name) {
+    syncUrl(name);
     var box = $("episodeList");
     if (!box) return;
     if (name === "loading") {

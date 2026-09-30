@@ -163,7 +163,7 @@ function run() {
     })
     // 状态演示按钮（最小修复）：非技术测试者免改 URL 即可看四态
     .then(() => {
-      const { doc } = buildApp("", "#/episodes");
+      const { window, doc } = buildApp("", "#/episodes");
       return sleep(350).then(() => {
         const demo = doc.getElementById("stateDemo");
         const btns = demo ? demo.querySelectorAll("button[data-state]") : [];
@@ -173,6 +173,9 @@ function run() {
         const errBox = doc.querySelector("#episodeList .error-box");
         ok("演示按钮·失败：点击后显示错误框与重试按钮",
           !!errBox && !!errBox.querySelector(".btn-retry"), errBox ? "文本：" + errBox.textContent.trim() : "无错误框");
+        ok("演示按钮·失败：地址同步为 ?fail=1#/episodes（截图/分享可复现）",
+          window.location.search === "?fail=1" && window.location.hash === "#/episodes",
+          "url=" + window.location.href);
 
         demo.querySelector('button[data-state="empty"]').click();
         const emptyBox = doc.querySelector("#episodeList .empty-box");
@@ -188,6 +191,8 @@ function run() {
         const cards = doc.querySelectorAll("#episodeList .episode-card");
         ok("演示按钮·成功：点击后恢复 6 集列表",
           cards.length === 6 && !doc.querySelector("#episodeList .error-box"), "cards=" + cards.length);
+        ok("演示按钮·成功：地址参数被清空（回到默认成功态地址）",
+          window.location.search === "", "search=" + window.location.search);
       });
     })
 

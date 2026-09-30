@@ -161,6 +161,36 @@ function run() {
           homeVisible, "homeVisible=" + homeVisible);
       });
     })
+    // 状态演示按钮（最小修复）：非技术测试者免改 URL 即可看四态
+    .then(() => {
+      const { doc } = buildApp("", "#/episodes");
+      return sleep(350).then(() => {
+        const demo = doc.getElementById("stateDemo");
+        const btns = demo ? demo.querySelectorAll("button[data-state]") : [];
+        ok("演示按钮：剧集页存在 4 个状态演示按钮", btns.length === 4, "btns=" + btns.length);
+
+        demo.querySelector('button[data-state="error"]').click();
+        const errBox = doc.querySelector("#episodeList .error-box");
+        ok("演示按钮·失败：点击后显示错误框与重试按钮",
+          !!errBox && !!errBox.querySelector(".btn-retry"), errBox ? "文本：" + errBox.textContent.trim() : "无错误框");
+
+        demo.querySelector('button[data-state="empty"]').click();
+        const emptyBox = doc.querySelector("#episodeList .empty-box");
+        ok("演示按钮·空：点击后显示空态",
+          !!emptyBox && emptyBox.textContent.indexOf("敬请期待") !== -1, emptyBox ? "文本：" + emptyBox.textContent.trim() : "无空态");
+
+        demo.querySelector('button[data-state="loading"]').click();
+        const loadingBox = doc.querySelector("#episodeList .loading-box");
+        ok("演示按钮·加载中：点击后显示加载态",
+          !!loadingBox, loadingBox ? "文本：" + loadingBox.textContent.trim() : "无加载态");
+
+        demo.querySelector('button[data-state="loaded"]').click();
+        const cards = doc.querySelectorAll("#episodeList .episode-card");
+        ok("演示按钮·成功：点击后恢复 6 集列表",
+          cards.length === 6 && !doc.querySelector("#episodeList .error-box"), "cards=" + cards.length);
+      });
+    })
+
     .then(() => results);
 }
 

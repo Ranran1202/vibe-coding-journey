@@ -59,6 +59,14 @@
       <div class="section">
         <h2>全部剧集</h2>
         <p class="sub" id="episodes-sub">每集约 90～120 秒。视频生成后把外链地址填进数据即可播放。</p>
+        <!-- 状态演示：给非技术测试者，免改 URL 也能看到剧集列表的四种状态 -->
+        <div class="state-demo" id="stateDemo" role="group" aria-label="体验剧集列表的四种状态">
+          <span class="state-demo__label">体验四种状态：</span>
+          <button type="button" data-state="loading">加载中</button>
+          <button type="button" data-state="loaded">成功</button>
+          <button type="button" data-state="empty">空</button>
+          <button type="button" data-state="error">失败</button>
+        </div>
         <!-- 列表容器：加载中 / 加载成功 / 没有结果 / 请求失败 四种状态都渲染在这里 -->
         <div class="grid" id="episodeList"></div>
       </div>

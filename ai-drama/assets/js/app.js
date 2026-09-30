@@ -324,4 +324,29 @@
     bootstrap();
   }
   window.addEventListener("hashchange", onRouteChange);
+
+  /* ---------- 状态演示：给非技术真人测试者，免改 URL 也能看四态 ---------- */
+  function runDemo(name) {
+    var box = $("episodeList");
+    if (!box) return;
+    if (name === "loading") {
+      showLoading(box);
+    } else if (name === "empty") {
+      showEmpty(box, "还没有上线的剧集，敬请期待～");
+    } else if (name === "error") {
+      showError(box, "暂时拿不到剧集数据，请稍后重试。");
+    } else { // loaded = 成功
+      state.episodes = state.data ? state.data.episodes.slice() : [];
+      renderEpisodes(state);
+    }
+  }
+
+  var demoEl = $("stateDemo");
+  if (demoEl) {
+    demoEl.addEventListener("click", function (e) {
+      var t = e.target;
+      var b = (t && t.closest) ? t.closest("button[data-state]") : null;
+      if (b) runDemo(b.getAttribute("data-state"));
+    });
+  }
 })();

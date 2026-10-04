@@ -1,0 +1,8 @@
+{
+  "name": "health",
+  "version": "0.1.0",
+  "description": "Day 15 健康检查云函数：GET /api/health，返回统一响应信封 { code, data, message }",
+  "main": "index.js",
+  "private": true,
+  "license": "MIT"
+}

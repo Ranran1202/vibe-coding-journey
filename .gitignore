@@ -3,6 +3,9 @@
 .env.*
 *.env
 
+# CloudBase 部署配置：含环境 ID，属敏感信息，只留在本地
+cloudbaserc.json
+
 # ===== 密钥 / 证书 =====
 *.pem
 *.key

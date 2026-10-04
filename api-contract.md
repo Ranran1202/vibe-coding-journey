@@ -1,19 +1,22 @@
 # API 契约（api-contract.md）
 
-> 本文件是**前后端「说好了」的唯一凭证**：前端按这里调用，后端按这里实现。
-> 任何一方要改字段、改路径、改返回结构，**先改本文件，再改代码**。
+> 本文件是**前后端「说好了」的唯一凭证**，也是**第 3 周建表、写接口的唯一依据**：
+> 前端按这里调用，后端按这里实现；任何一方要改字段/路径/返回结构，**先改本文件，再改代码**。
 >
-> 本版按「今日热搜」案例 Day 15 的任务要求登记全部接口；除 `GET /api/health` 外，
-> **均为占位**（只登记形状，不实现）。
+> 本版**从 `my-app`（今日热搜）第 2 周页面的真实需求推导**得出，按训练营模板实例化：
+> 模板里的「打卡应用 `plan_days` / `checkins`」是**别人的示例**，本项目对应的是 **`trends` / `favorites`** 两张表。
+>
+> **除 `GET /api/health` 已实现外，其余接口今日只登记占位，不实现。**
 
 | 项目 | 内容 |
 |---|---|
-| 项目 | 今日热搜（`vibe-coding-journey` 的 `my-app`） |
-| 阶段 | Phase 2 —— 从「纯静态」接入真实后端 |
-| 后端形态 | 腾讯云 CloudBase（云开发）· 普通云函数 + HTTP 访问服务 |
-| 前端形态 | 原生 JS 静态站（无构建步骤），托管于 CloudBase 静态网站托管 |
-| 契约版本 | **v0.2.0** |
+| 项目名称 | **今日热搜** |
+| 项目英文名（`service` 标识） | **`hot-search-demo`** |
+| 前端 | `my-app` —— **原生 JS 静态站**（`index.html` + `js/*.js`，**无构建步骤**），托管于 CloudBase 静态网站托管 |
+| 后端 | 腾讯云 CloudBase（云开发）· 普通云函数 + HTTP 访问服务 |
+| 契约版本 | **v0.3.0** |
 | 最后更新 | 2026-10-04 |
+| 推导依据 | `my-app/index.html` 的 4 个视图 + `js/app.js` 的数据加载逻辑 + `js/data.js` / `js/config.js` / `js/store.js` 的数据结构 |
 | 关联文档 | `TECH_DESIGN.md`（§4 数据模型、§5 API、§6.2 Phase 2 数据流） |
 
 ---
@@ -42,7 +45,7 @@
 ```
 
 - 业务数据统一放在 `data` 字段（对象或数组）。
-- **例外**：探针接口 `GET /api/health` 直接把 `service` / `time` **平铺**在顶层，不再包 `data`（见 2.1）。
+- **例外**：探针接口 `GET /api/health` 直接把 `service`（及 `time`）**平铺**在顶层，不再包 `data`（见 3.1）。
 
 **失败**（`ok: false`）
 
@@ -61,12 +64,13 @@
 | HTTP | `error.code` | 含义 | 前端表现 |
 |---|---|---|---|
 | `400` | `BAD_REQUEST` | 参数缺失 / 格式不对 | 提示「请求参数有误」 |
-| `404` | `NOT_FOUND` | 资源不存在（如收藏 id 不存在） | 提示「没有找到」 |
+| `404` | `NOT_FOUND` | 资源不存在（如热搜 id / 收藏 id 不存在） | 提示「没有找到这条热搜（可能链接已失效）」 |
 | `409` | `CONFLICT` | 冲突（如重复收藏同一条热搜） | 提示「已经收藏过了」 |
 | `500` | `INTERNAL_ERROR` | 服务端错误 | 提示「暂时拿不到数据，请稍后重试」+ 重试按钮，**不白屏** |
 | `502` | `UPSTREAM_UNAVAILABLE` | 上游公开数据源不可用 | 该来源显示「数据暂不可用」，其余正常 |
 
 > HTTP 状态码与 `error.code` **一一对应**：上面同一行的两者同时出现。
+> 前端四态（加载中 / 加载成功 / 没有结果 / 请求失败）分别对应：请求进行中 / `ok:true` / `ok:true` 且 `data` 为空数组 / `ok:false`。
 
 ### 1.4 通用约束
 
@@ -79,13 +83,60 @@
 
 ---
 
-## 2. 接口明细
+## 2. 数据表（第 3 周建表依据）
+
+> 前端目前把数据写在 `js/data.js`（热搜）与 `localStorage`（收藏）里。
+> 第 3 周要把它们搬进数据库，**只需要下面这两张表**。
+
+### 2.1 `trends`（热搜记录表）
+
+对应 `js/data.js` 的 `HOT_DATA`（字段名保持一致，便于前端平滑切换）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | string | 主键，形如 `weibo-1`（= `platform` + `-` + `rank`），**与前端 `app.js` 的 `itemId()` 完全一致** |
+| `platform` | string | 来源平台 key：`weibo` / `baidu` / `douyin` |
+| `rank` | number | 排名 |
+| `title` | string | 标题 |
+| `heat` | string | 热度（**原样字符串**，如 `"523 万"`，不转数字） |
+| `url` | string | 去原平台查看的链接 |
+| `date` | string | 数据日期 `YYYY-MM-DD` |
+| `createdAt` | string | 入库时间（ISO 8601，UTC） |
+
+### 2.2 `favorites`（收藏表）
+
+对应前端 `js/store.js` 的收藏与备注（目前存在 `localStorage`，键为 `platform|title`）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | string | 主键（收藏记录 id） |
+| `trendId` | string | 关联 `trends.id`（如 `weibo-1`） |
+| `title` | string | 冗余存一份标题（防止原条目变动后收藏显示不出来） |
+| `platform` | string | 冗余存一份平台 |
+| `note` | string | **我的备注**（对应 `store.js` 的 `note`），可为空字符串 |
+| `createdAt` | string | 收藏时间 |
+| `updatedAt` | string | 备注最近更新时间 |
+
+> **迁移提示**：前端 `store.js` 现在用 `platform|title` 当收藏键，而路由/详情用的是 `platform-rank`。
+> 接入后端时**统一采用 `trends.id`（`platform-rank`）作为 `trendId`**，前端 `store.js` 的 `idOf()` 需同步改成同一规则，否则「收藏」和「详情」会对不上号。
+> 另外，「是否已收藏」不需要单独字段 —— **`favorites` 表里有没有这条记录**就代表收藏与否（对应前端 `fav: true/false`）。
+
+### 2.3 表 ↔ 接口 对照
+
+| 表 | 读 | 写 |
+|---|---|---|
+| `trends` | `GET /api/platforms`、`GET /api/hot`、`GET /api/hot/:id` | `POST /api/sync`（从公开源写入） |
+| `favorites` | `GET /api/favorites` | `POST /api/favorites`、`PATCH /api/favorites/:id`、`DELETE /api/favorites/:id` |
+
+---
+
+## 3. 接口明细
 
 > 图例：✅ 已实现 ｜ 📝 占位（只登记形状，尚未实现）
 
-### 2.1 `GET /api/health` —— 健康检查 ✅ 已实现
+### 3.1 `GET /api/health` —— 健康检查 ✅ 已实现
 
-**用途**：探针接口。确认「后端在线、公网可达、返回格式正确」。后续接口都照它的套路新增。
+**用途**：探针接口。确认「后端在线、公网可达、返回格式正确」。
 
 **实现**：`cloudfunctions/health/index.js`
 
@@ -111,30 +162,29 @@
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `ok` | boolean | 固定 `true` |
-| `service` | string | 服务标识，固定 `"hot-search-demo"`，前端可据此核对「连对了后端」 |
+| `service` | string | 服务标识，固定 `"hot-search-demo"` |
 | `time` | string | 服务器当前时间（ISO 8601，UTC） |
 
 **错误返回**：本接口无入参，正常不会返回业务错误；访问不存在的路径由 HTTP 访问服务直接返回 `404`。
 
 **验证方式**：浏览器地址栏直接打开 `https://<env-id>.service.tcloudbase.com/api/health`，
-应看到上面那段 JSON，其中 `ok` 为 `true`、`service` 为 `"hot-search-demo"`、`time` 是当前时间。
+应看到上面那段 JSON，其中 `ok` 为 `true`、`service` 为 `"hot-search-demo"`。
 （截图时保留**地址栏 + 返回的 JSON**。）
 
 ---
 
-### 2.2 `GET /api/hot` —— 热搜列表 📝 占位
+### 3.2 `GET /api/platforms` —— 平台清单 📝 占位
 
-**用途**：返回热搜列表（今日热搜主页的数据来源）。
-
-**实现计划**：接入真实数据后实现（依赖 `trends` 表）。
+**用途**：首页的**平台切换标签** + 「平台列表页」的**平台卡片**（卡片还要显示每个平台的条数）。
+数据目前来自 `js/config.js` 的 `PLATFORMS`，条数来自 `HOT_DATA.filter(...)`。
 
 **请求**
 
 | 项 | 值 |
 |---|---|
 | 方法 | `GET` |
-| 路径 | `/api/hot` |
-| 查询参数 | `platform`（可选，如 `weibo` / `baidu` / `douyin`；缺省返回全部/合并）<br>`date`（可选，`YYYY-MM-DD`；缺省为当天） |
+| 路径 | `/api/platforms` |
+| 入参 | 无 |
 
 **成功响应**（HTTP `200`）
 
@@ -142,7 +192,45 @@
 {
   "ok": true,
   "data": [
-    { "id": "weibo-1", "rank": 1, "title": "示例标题", "heat": "523万", "platform": "weibo", "url": "https://..." }
+    { "key": "weibo", "name": "微博", "count": 2 },
+    { "key": "baidu", "name": "百度", "count": 2 },
+    { "key": "douyin", "name": "抖音", "count": 1 }
+  ],
+  "count": 3
+}
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `data[].key` | string | 平台 key，与 `trends.platform` 对应 |
+| `data[].name` | string | 平台中文名 |
+| `data[].count` | number | 该平台当前热搜条数（平台列表页要显示「N 条热搜」） |
+| `count` | number | 平台总数 |
+
+**错误返回**：`500 INTERNAL_ERROR`。
+
+---
+
+### 3.3 `GET /api/hot` —— 热搜列表 📝 占位
+
+**用途**：首页（`#/home`）与「我的收藏」（`#/fav`）共用的**热搜列表读取接口**。
+前端拿到后在本地做平台筛选与关键词筛选（`filteredItems()`），所以**筛选参数是可选优化，不作为必需**。
+
+**请求**
+
+| 项 | 值 |
+|---|---|
+| 方法 | `GET` |
+| 路径 | `/api/hot` |
+| 查询参数 | `platform`（可选，`weibo`/`baidu`/`douyin`；缺省返回全部）<br>`date`（可选，`YYYY-MM-DD`；缺省为当天） |
+
+**成功响应**（HTTP `200`）
+
+```json
+{
+  "ok": true,
+  "data": [
+    { "id": "weibo-1", "rank": 1, "title": "示例热搜一：某地迎来初雪刷屏", "heat": "523 万", "platform": "weibo", "url": "https://s.weibo.com/top/summary" }
   ],
   "count": 1
 }
@@ -150,28 +238,57 @@
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `data[].id` | string | 唯一标识 |
+| `data[].id` | string | 唯一标识，= `platform-rank`，**与前端 `itemId()` 一致**，收藏/详情都靠它 |
 | `data[].rank` | number | 排名 |
-| `data[].title` | string | 热搜标题 |
-| `data[].heat` | string | 热度（保留原样字符串，如 `"523万"`） |
+| `data[].title` | string | 标题 |
+| `data[].heat` | string | 热度（原样字符串，如 `"523 万"`） |
 | `data[].platform` | string | 来源平台 |
-| `data[].url` | string | 原文链接 |
+| `data[].url` | string | 去原平台查看的链接 |
 | `count` | number | 本次返回条数 |
 
 **错误返回**
 
 | 场景 | HTTP | body |
 |---|---|---|
-| 参数格式不对（如 `date` 非 `YYYY-MM-DD`） | `400` | `{ "ok": false, "error": { "code": "BAD_REQUEST", "message": "date 格式应为 YYYY-MM-DD" } }` |
+| `date` 格式不对 | `400` | `{ "ok": false, "error": { "code": "BAD_REQUEST", "message": "date 格式应为 YYYY-MM-DD" } }` |
 | 服务端错误 | `500` | `{ "ok": false, "error": { "code": "INTERNAL_ERROR", "message": "暂时拿不到数据" } }` |
 
 ---
 
-### 2.3 `GET /api/favorites` —— 收藏列表 📝 占位
+### 3.4 `GET /api/hot/:id` —— 单条热搜 📝 占位
 
-**用途**：返回当前用户的收藏列表。
+**用途**：热搜详情页（`#/detail/:id`，如 `#/detail/weibo-1`）**可独立访问/直接刷新**，需要按 id 取单条。
+（若前端继续沿用「先取整个列表再本地查找」的做法（`findItemById()`），本接口可暂不实现；列在这里是为了让契约完整。）
 
-**实现计划**：依赖 `favorites` 表。
+**请求**
+
+| 项 | 值 |
+|---|---|
+| 方法 | `GET` |
+| 路径 | `/api/hot/:id`（`:id` 形如 `weibo-1`） |
+| 入参 | 无 |
+
+**成功响应**（HTTP `200`）
+
+```json
+{
+  "ok": true,
+  "data": { "id": "weibo-1", "rank": 1, "title": "示例热搜一：某地迎来初雪刷屏", "heat": "523 万", "platform": "weibo", "url": "https://s.weibo.com/top/summary" }
+}
+```
+
+**错误返回**
+
+| 场景 | HTTP | body |
+|---|---|---|
+| 该热搜不存在 | `404` | `{ "ok": false, "error": { "code": "NOT_FOUND", "message": "没有找到这条热搜" } }` |
+| 服务端错误 | `500` | `{ "ok": false, "error": { "code": "INTERNAL_ERROR", "message": "暂时拿不到数据" } }` |
+
+---
+
+### 3.5 `GET /api/favorites` —— 收藏列表 📝 占位
+
+**用途**：「我的收藏」视图（`#/fav`）的**列表读取接口**。前端在此视图下还会对**标题与备注**做关键词筛选。
 
 **请求**
 
@@ -187,7 +304,7 @@
 {
   "ok": true,
   "data": [
-    { "id": "fav-1", "trendId": "weibo-1", "title": "示例标题", "platform": "weibo", "note": "备注", "createdAt": "2026-10-04T07:47:10.946Z" }
+    { "id": "fav-1", "trendId": "weibo-1", "title": "示例热搜一：某地迎来初雪刷屏", "platform": "weibo", "note": "周末看看", "createdAt": "2026-10-04T07:47:10.946Z", "updatedAt": "2026-10-04T07:47:10.946Z" }
   ],
   "count": 1
 }
@@ -196,19 +313,19 @@
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `data[].id` | string | 收藏记录 id |
-| `data[].trendId` | string | 关联的热搜 id |
-| `data[].title` / `platform` | string | 收藏时的热搜标题 / 来源（冗余存一份，防止原条目变动） |
-| `data[].note` | string | 备注，可为空字符串 |
-| `data[].createdAt` | string | 收藏时间（ISO 8601，UTC） |
+| `data[].trendId` | string | 关联的热搜 id（`trends.id`） |
+| `data[].title` / `platform` | string | 收藏时的标题 / 来源 |
+| `data[].note` | string | 我的备注，可为空字符串 |
+| `data[].createdAt` / `updatedAt` | string | 收藏时间 / 备注更新时间 |
 | `count` | number | 本次返回条数 |
 
 **错误返回**：`500 INTERNAL_ERROR`。
 
 ---
 
-### 2.4 `POST /api/sync` —— 手动拉取当日真实热搜 📝 占位
+### 3.6 `POST /api/sync` —— 手动拉取当日真实热搜 📝 占位
 
-**用途**：从**免费公开来源**拉取当日真实热搜，写入 `trends` 表（**手动触发**，本课程**不做定时自动同步**）。
+**用途**：从**免费公开来源**拉取当日真实热搜，写入 `trends` 表（**手动触发**，对应首页的「手动刷新」按钮；本课程**不做定时自动同步**）。
 
 **实现计划**：**Day 17 实现**。
 
@@ -246,11 +363,9 @@
 
 ---
 
-### 2.5 `POST /api/favorites` —— 新增收藏 📝 占位
+### 3.7 `POST /api/favorites` —— 新增收藏 📝 占位
 
-**用途**：把一条热搜加入收藏。
-
-**实现计划**：依赖 `favorites` 表。
+**用途**：把一条热搜加入收藏（对应列表/详情页的「☆ 收藏」按钮）。
 
 **请求**
 
@@ -258,16 +373,16 @@
 |---|---|
 | 方法 | `POST` |
 | 路径 | `/api/favorites` |
-| 请求体 | `{ "trendId": "weibo-1", "title": "示例标题", "platform": "weibo", "url": "https://...", "note": "" }` |
+| 请求体 | `{ "trendId": "weibo-1", "title": "示例标题", "platform": "weibo", "note": "" }` |
 
-- 必填：`trendId`、`title`、`platform`；`url`、`note` 可选。
+- 必填：`trendId`、`title`、`platform`；`note` 可选（默认空字符串）。
 
 **成功响应**（HTTP `201`）
 
 ```json
 {
   "ok": true,
-  "data": { "id": "fav-1", "trendId": "weibo-1", "title": "示例标题", "platform": "weibo", "note": "", "createdAt": "2026-10-04T07:47:10.946Z" }
+  "data": { "id": "fav-1", "trendId": "weibo-1", "title": "示例标题", "platform": "weibo", "note": "", "createdAt": "2026-10-04T07:47:10.946Z", "updatedAt": "2026-10-04T07:47:10.946Z" }
 }
 ```
 
@@ -281,9 +396,9 @@
 
 ---
 
-### 2.6 `PATCH /api/favorites/:id` —— 修改收藏备注 📝 占位
+### 3.8 `PATCH /api/favorites/:id` —— 修改收藏备注 📝 占位
 
-**用途**：修改某条收藏的备注。
+**用途**：修改某条收藏的备注（对应详情页的「我的备注」输入框）。
 
 **实现计划**：**第 4 周实现**。
 
@@ -300,7 +415,7 @@
 ```json
 {
   "ok": true,
-  "data": { "id": "fav-1", "trendId": "weibo-1", "title": "示例标题", "platform": "weibo", "note": "新备注", "createdAt": "2026-10-04T07:47:10.946Z" }
+  "data": { "id": "fav-1", "trendId": "weibo-1", "title": "示例标题", "platform": "weibo", "note": "新备注", "createdAt": "2026-10-04T07:47:10.946Z", "updatedAt": "2026-10-04T08:10:00.000Z" }
 }
 ```
 
@@ -313,9 +428,9 @@
 
 ---
 
-### 2.7 `DELETE /api/favorites/:id` —— 取消收藏 📝 占位
+### 3.9 `DELETE /api/favorites/:id` —— 取消收藏 📝 占位
 
-**用途**：从收藏中移除一条。
+**用途**：从收藏中移除一条（对应「★ 已收藏」按钮的取消）。
 
 **实现计划**：**第 4 周实现**。
 
@@ -342,22 +457,41 @@
 
 ---
 
-## 3. 变更记录
+## 4. 页面 ↔ 接口 对照（本契约的推导依据）
 
-| 版本 | 日期 | 变更 | 影响 |
-|---|---|---|---|
-| v0.1.0 | 2026-10-04 | 建立契约；定义统一信封 `{code,data,message}`；实现 `GET /api/health` | 新增（Day 15 初版） |
-| v0.2.0 | 2026-10-04 | **响应结构由 `{code,data,message}` 信封改为顶层 `ok` 结构**；`/api/health` 返回改为 `{ok, service, time}`；登记 6 个后续接口占位（hot / favorites / sync） | 破坏性变更（无消费方，仅本地）；接口清单以本版为准 |
+| 页面 / 视图（`my-app`） | 前端现在怎么拿数据 | 接入后端后调用 |
+|---|---|---|
+| 首页 `#/home`（热搜列表 + 平台标签 + 关键词筛选） | `HOT_DATA` + `PLATFORMS` | `GET /api/hot`、`GET /api/platforms` |
+| 平台列表页 `#/platforms`（平台卡片 + 「N 条热搜」） | `PLATFORMS` + `HOT_DATA.filter()` 计数 | `GET /api/platforms`（含 `count`） |
+| 热搜详情页 `#/detail/:id`（可独立访问） | `findItemById()` 从列表里找 | `GET /api/hot/:id`（或继续从列表派生） |
+| 我的收藏 `#/fav`（收藏列表，按标题/备注筛选） | `localStorage`（`store.js`） | `GET /api/favorites` |
+| 收藏按钮「☆/★」 | `FavStore.toggleFav()` | `POST /api/favorites` / `DELETE /api/favorites/:id` |
+| 详情页「我的备注」输入框 | `FavStore.setNote()` | `PATCH /api/favorites/:id` |
+| 首页「手动刷新」按钮 | `loadData()`（当前是假延迟） | `POST /api/sync` + `GET /api/hot` |
+| 全局探针（确认后端在线） | 无 | `GET /api/health` |
+
+> 说明：页面上的**复制标题**（Day 11）是纯前端能力，**不需要后端接口**；关键词筛选、平台筛选在数据量小时**由前端本地完成**，因此不单列接口。
 
 ---
 
-## 4. 与 `TECH_DESIGN.md` 的差异说明
+## 5. 变更记录
 
-本契约按「今日热搜」案例的任务要求登记接口，与 `TECH_DESIGN.md` §5 早期草拟的命名有出入，**以本文件为准**：
+| 版本 | 日期 | 变更 | 影响 |
+|---|---|---|---|
+| v0.1.0 | 2026-10-04 | 建立契约；统一信封 `{code,data,message}`；实现 `GET /api/health` | 新增（Day 15 初版） |
+| v0.2.0 | 2026-10-04 | 响应结构改为顶层 `ok`；`/api/health` 改为 `{ok, service, time}`；登记 6 个接口占位 | 破坏性变更（无消费方，仅本地） |
+| v0.3.0 | 2026-10-04 | **按 `my-app` 页面需求推导重写**：新增 `GET /api/platforms`（平台清单，页面需要）、`GET /api/hot/:id`（详情页可独立访问）；新增 §2 数据表（`trends` / `favorites`）与 §4 页面↔接口对照；补 `favorites.updatedAt`、`trendId` 迁移提示 | 占位阶段，无代码影响 |
+
+---
+
+## 6. 与 `TECH_DESIGN.md` 的差异说明
+
+本契约按「今日热搜」页面的实际需求推导，与 `TECH_DESIGN.md` §5 早期草拟的命名有出入，**以本文件为准**：
 
 | TECH_DESIGN.md §5 早期写法 | 本契约（现行） | 说明 |
 |---|---|---|
 | `GET /api/hot-search?platform=&date=` | `GET /api/hot?platform=&date=` | 路径统一为 `/api/hot` |
-| `GET /api/platforms` | （暂未登记） | 平台清单暂并入 `/api/hot` 的查询参数；如后续独立区分再加 |
+| `GET /api/platforms` | `GET /api/platforms` | **保留**（平台列表页确实需要） |
 | `POST /api/sync` | `POST /api/sync`（Day 17） | 一致 |
-| — | `GET/POST/PATCH/DELETE /api/favorites*` | 本版新增：收藏相关接口（第 4 周实现） |
+| — | `GET /api/hot/:id` | 新增：详情页可独立访问 |
+| — | `GET/POST/PATCH/DELETE /api/favorites*` | 新增：收藏与备注（第 4 周实现后三个） |

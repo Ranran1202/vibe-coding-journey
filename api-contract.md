@@ -14,8 +14,8 @@
 | 项目英文名（`service` 标识） | **`hot-search-demo`** |
 | 前端 | `my-app` —— **原生 JS 静态站**（`index.html` + `js/*.js`，**无构建步骤**），托管于 CloudBase 静态网站托管 |
 | 后端 | 腾讯云 CloudBase（云开发）· 普通云函数 + HTTP 访问服务 |
-| 数据库 | CloudBase **PostgreSQL 17.11**（真 SQL）。**2026-10-05（Day 16）已建表**，DDL 见 `db/schema.sql`，种子见 `db/seed.sql` |
-| 契约版本 | **v0.4.0** |
+| 数据库 | CloudBase **PostgreSQL 17.11**（真 SQL）。**2026-10-05（Day 16）已建表**。脚本：`db/schema.sql`（建表）、`db/seed.sql`（补种子·幂等）、`db/reset.sql`（重置·先删后建）；执行与验证步骤见 `db/README.md` |
+| 契约版本 | **v0.5.0** |
 | 最后更新 | 2026-10-05 |
 | 推导依据 | `my-app/index.html` 的 4 个视图 + `js/app.js` 的数据加载逻辑 + `js/data.js` / `js/config.js` / `js/store.js` 的数据结构 |
 | 关联文档 | `TECH_DESIGN.md`（§4 数据模型、§5 API、§6.2 Phase 2 数据流） |
@@ -94,6 +94,44 @@
 > - **列名一律加双引号**以保留驼峰（`trendId` / `createdAt` / `updatedAt`）：PostgreSQL 会把没引号的标识符折叠成小写，
 >   那样 Day 17 接口返回的 JSON 键会变成 `trendid`，跟前端期待的 `trendId` 对不上。**后续所有 SQL 都要带引号。**
 > - 当前数据：两张表**各 5 行**（沿用 `js/data.js` 的 5 条示例热搜），JOIN 验证通过。
+
+> ✅ **2026-10-05 · v0.5.0 一致性回写**
+> 本章表结构**完全由本契约推导**，未另造字段。脚本与执行手册：
+>
+> | 文件 | 作用 | 会清数据吗 |
+> |---|---|---|
+> | `db/schema.sql` | 建表 DDL（主键 / 外键 / 索引，`IF NOT EXISTS`） | ❌ |
+> | `db/seed.sql` | 补种子（纯 `INSERT` + `ON CONFLICT DO NOTHING`） | ❌ |
+> | `db/reset.sql` | 重置（先 `DROP` → 再 `CREATE` → 再 `INSERT`） | ⚠️ 会 |
+> | `db/README.md` | 控制台/CLI 执行步骤 + select 验证步骤 | — |
+>
+> - 三个脚本都**可重复执行**；`reset.sql` 与 `seed.sql` 灌入的数据完全一致，且时间字段用**固定值**（非 `now()`），因此**可复现**。
+> - 结构一致性见下一节 §2.4。
+
+### 2.4 契约字段 ↔ 数据库列（一致性核对）
+
+契约写的是**接口 JSON 的类型**，数据库列是**存储类型**，映射规则：`string → TEXT`、`number → INTEGER`、时间 → `TIMESTAMPTZ`（接口序列化为 ISO 8601）。
+
+| 表 | 契约 §2 字段 | 数据库列 | 存储类型 | 约束 | 一致 |
+|---|---|---|---|---|---|
+| `trends` | `id` | `"id"` | `TEXT` | **PK** | ✅ |
+| `trends` | `platform` | `"platform"` | `TEXT` | NOT NULL | ✅ |
+| `trends` | `rank` | `"rank"` | `INTEGER` | NOT NULL | ✅ |
+| `trends` | `title` | `"title"` | `TEXT` | NOT NULL | ✅ |
+| `trends` | `heat` | `"heat"` | `TEXT` | NOT NULL | ✅ |
+| `trends` | `url` | `"url"` | `TEXT` | DEFAULT `''` | ✅ |
+| `trends` | `date` | `"date"` | `TEXT` | NOT NULL | ✅ |
+| `trends` | `createdAt` | `"createdAt"` | `TIMESTAMPTZ` | DEFAULT `now()` | ✅ |
+| `favorites` | `id` | `"id"` | `TEXT` | **PK** | ✅ |
+| `favorites` | `trendId` | `"trendId"` | `TEXT` | **FK → `trends."id"`** `ON DELETE CASCADE` | ✅ |
+| `favorites` | `title` | `"title"` | `TEXT` | NOT NULL | ✅ |
+| `favorites` | `platform` | `"platform"` | `TEXT` | NOT NULL | ✅ |
+| `favorites` | `note` | `"note"` | `TEXT` | DEFAULT `''` | ✅ |
+| `favorites` | `createdAt` | `"createdAt"` | `TIMESTAMPTZ` | DEFAULT `now()` | ✅ |
+| `favorites` | `updatedAt` | `"updatedAt"` | `TIMESTAMPTZ` | DEFAULT `now()` | ✅ |
+
+> 索引：`idx_trends_date`、`idx_trends_platform`、`idx_favorites_trendid`。
+> **改任何一边都要先改本契约**（见文首规则）。
 
 ### 2.1 `trends`（热搜记录表）
 
@@ -489,6 +527,7 @@
 | v0.2.0 | 2026-10-04 | 响应结构改为顶层 `ok`；`/api/health` 改为 `{ok, service, time}`；登记 6 个接口占位 | 破坏性变更（无消费方，仅本地） |
 | v0.3.0 | 2026-10-04 | **按 `my-app` 页面需求推导重写**：新增 `GET /api/platforms`（平台清单，页面需要）、`GET /api/hot/:id`（详情页可独立访问）；新增 §2 数据表（`trends` / `favorites`）与 §4 页面↔接口对照；补 `favorites.updatedAt`、`trendId` 迁移提示 | 占位阶段，无代码影响 |
 | v0.4.0 | 2026-10-05 | **数据表落地**：CloudBase PostgreSQL 17.11 已建 `trends` / `favorites` 两表（各 5 行种子），DDL 落 `db/schema.sql`、种子落 `db/seed.sql`（幂等）；明确「列名必须加双引号保留驼峰」这条 SQL 书写规则 | **表结构定稿**，Day 17 读接口按此实现；接口数量与字段未变 |
+| v0.5.0 | 2026-10-05 | **一致性回写**：新增 §2.4「契约字段 ↔ 数据库列」逐字段核对表（15 个字段全部一致）；补齐脚本清单（新增 `db/reset.sql` 先删后建的重置脚本、`db/README.md` 执行与 select 验证手册）；`seed.sql` / `reset.sql` 的时间字段改为固定值以满足「可复现」 | 无接口变更；表结构未变。**契约与数据库从此互为依据，改一边必须先改契约** |
 
 ---
 

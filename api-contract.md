@@ -14,8 +14,9 @@
 | 项目英文名（`service` 标识） | **`hot-search-demo`** |
 | 前端 | `my-app` —— **原生 JS 静态站**（`index.html` + `js/*.js`，**无构建步骤**），托管于 CloudBase 静态网站托管 |
 | 后端 | 腾讯云 CloudBase（云开发）· 普通云函数 + HTTP 访问服务 |
-| 契约版本 | **v0.3.0** |
-| 最后更新 | 2026-10-04 |
+| 数据库 | CloudBase **PostgreSQL 17.11**（真 SQL）。**2026-10-05（Day 16）已建表**，DDL 见 `db/schema.sql`，种子见 `db/seed.sql` |
+| 契约版本 | **v0.4.0** |
+| 最后更新 | 2026-10-05 |
 | 推导依据 | `my-app/index.html` 的 4 个视图 + `js/app.js` 的数据加载逻辑 + `js/data.js` / `js/config.js` / `js/store.js` 的数据结构 |
 | 关联文档 | `TECH_DESIGN.md`（§4 数据模型、§5 API、§6.2 Phase 2 数据流） |
 
@@ -83,10 +84,16 @@
 
 ---
 
-## 2. 数据表（第 3 周建表依据）
+## 2. 数据表（第 3 周建表依据 · **已落地**）
 
 > 前端目前把数据写在 `js/data.js`（热搜）与 `localStorage`（收藏）里。
 > 第 3 周要把它们搬进数据库，**只需要下面这两张表**。
+
+> ✅ **2026-10-05（Day 16）落地记录**
+> - CloudBase 环境实测为 **PostgreSQL 17.11**，DDL 落 `db/schema.sql`（每字段带注释），种子落 `db/seed.sql`（**幂等**，重复执行不报错）。
+> - **列名一律加双引号**以保留驼峰（`trendId` / `createdAt` / `updatedAt`）：PostgreSQL 会把没引号的标识符折叠成小写，
+>   那样 Day 17 接口返回的 JSON 键会变成 `trendid`，跟前端期待的 `trendId` 对不上。**后续所有 SQL 都要带引号。**
+> - 当前数据：两张表**各 5 行**（沿用 `js/data.js` 的 5 条示例热搜），JOIN 验证通过。
 
 ### 2.1 `trends`（热搜记录表）
 
@@ -481,6 +488,7 @@
 | v0.1.0 | 2026-10-04 | 建立契约；统一信封 `{code,data,message}`；实现 `GET /api/health` | 新增（Day 15 初版） |
 | v0.2.0 | 2026-10-04 | 响应结构改为顶层 `ok`；`/api/health` 改为 `{ok, service, time}`；登记 6 个接口占位 | 破坏性变更（无消费方，仅本地） |
 | v0.3.0 | 2026-10-04 | **按 `my-app` 页面需求推导重写**：新增 `GET /api/platforms`（平台清单，页面需要）、`GET /api/hot/:id`（详情页可独立访问）；新增 §2 数据表（`trends` / `favorites`）与 §4 页面↔接口对照；补 `favorites.updatedAt`、`trendId` 迁移提示 | 占位阶段，无代码影响 |
+| v0.4.0 | 2026-10-05 | **数据表落地**：CloudBase PostgreSQL 17.11 已建 `trends` / `favorites` 两表（各 5 行种子），DDL 落 `db/schema.sql`、种子落 `db/seed.sql`（幂等）；明确「列名必须加双引号保留驼峰」这条 SQL 书写规则 | **表结构定稿**，Day 17 读接口按此实现；接口数量与字段未变 |
 
 ---
 

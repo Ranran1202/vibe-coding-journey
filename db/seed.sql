@@ -1,0 +1,49 @@
+-- ============================================================
+-- 今日热搜（hot-search-demo）· 种子数据
+-- 环境：腾讯云 CloudBase · PostgreSQL 17
+-- 特性：★幂等★ —— 重复执行不会报错、也不会产生重复数据
+--       靠 ON CONFLICT ("id") DO NOTHING 实现：
+--       主键已存在就跳过，不存在才插入。
+-- 顺序：必须先插 trends，再插 favorites
+--       （favorites.trendId 是外键，指向 trends.id，父表没数据会插不进去）
+-- ============================================================
+
+
+-- ------------------------------------------------------------
+-- 1. trends —— 5 条热搜（沿用前端 js/data.js 的 HOT_DATA，字段一一对应）
+-- ------------------------------------------------------------
+INSERT INTO trends ("id", "platform", "rank", "title", "heat", "url", "date") VALUES
+  ('weibo-1',  'weibo',  1, '示例热搜一：某地迎来初雪刷屏',   '523 万', 'https://s.weibo.com/top/summary', '2026-10-05'),
+  ('baidu-2',  'baidu',  2, '示例热搜二：新款手机今日正式发布', '412 万', 'https://top.baidu.com/board',     '2026-10-05'),
+  ('douyin-3', 'douyin', 3, '示例热搜三：这部剧大结局引热议',   '388 万', 'https://www.douyin.com/hot',      '2026-10-05'),
+  ('weibo-4',  'weibo',  4, '示例热搜四：周末周边游攻略走红',   '301 万', 'https://s.weibo.com/top/summary', '2026-10-05'),
+  ('baidu-5',  'baidu',  5, '示例热搜五：一杯奶茶的热量真相',   '276 万', 'https://top.baidu.com/board',     '2026-10-05')
+ON CONFLICT ("id") DO NOTHING;
+
+
+-- ------------------------------------------------------------
+-- 2. favorites —— 5 条收藏（每条都指向上面真实存在的 trends.id）
+--    note 留两条空字符串，验证「没有备注」也能正常存
+-- ------------------------------------------------------------
+INSERT INTO favorites ("id", "trendId", "title", "platform", "note") VALUES
+  ('fav-1', 'weibo-1',  '示例热搜一：某地迎来初雪刷屏',   'weibo',  '周末去看看原文'),
+  ('fav-2', 'baidu-2',  '示例热搜二：新款手机今日正式发布', 'baidu',  ''),
+  ('fav-3', 'douyin-3', '示例热搜三：这部剧大结局引热议',   'douyin', '据说结局有反转'),
+  ('fav-4', 'weibo-4',  '示例热搜四：周末周边游攻略走红',   'weibo',  ''),
+  ('fav-5', 'baidu-5',  '示例热搜五：一杯奶茶的热量真相',   'baidu',  '同事推荐看的')
+ON CONFLICT ("id") DO NOTHING;
+
+
+-- ============================================================
+-- 附：验证用语句（不在这份种子里自动执行，供手动核对）
+--
+--   1) 两张表各有多少行（预期各 5）
+--      SELECT 'trends' AS 表, count(*) AS 行数 FROM trends
+--      UNION ALL
+--      SELECT 'favorites', count(*) FROM favorites;
+--
+--   2) 看收藏能不能反查到原热搜（JOIN 正是 trendId 这个关联字段的用途）
+--      SELECT f."id", f."trendId", t."title", t."rank", t."heat", f."note"
+--      FROM favorites f JOIN trends t ON t."id" = f."trendId"
+--      ORDER BY f."id";
+-- ============================================================

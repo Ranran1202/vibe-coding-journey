@@ -1,0 +1,11 @@
+{
+  "name": "drama-episodes",
+  "version": "0.1.0",
+  "description": "Day 17 云函数：GET /api/drama/episodes，从 drama_episodes 核心表读取剧集列表",
+  "main": "index.js",
+  "private": true,
+  "license": "MIT",
+  "dependencies": {
+    "@cloudbase/node-sdk": "latest"
+  }
+}

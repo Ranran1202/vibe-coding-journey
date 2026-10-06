@@ -1,0 +1,11 @@
+{
+  "name": "drama-watchlogs",
+  "version": "0.1.0",
+  "description": "Day 17 云函数：GET /api/drama/watch-logs，从 drama_watch_logs 记录表读取观看记录",
+  "main": "index.js",
+  "private": true,
+  "license": "MIT",
+  "dependencies": {
+    "@cloudbase/node-sdk": "latest"
+  }
+}

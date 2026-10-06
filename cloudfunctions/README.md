@@ -1,6 +1,14 @@
-# 云函数部署与验证手册（今日热搜 · Day 17）
+# 云函数部署与验证手册（Day 17）
 
-覆盖 `hot`（GET /api/hot）、`favorites`（GET /api/favorites）、`sync`（POST /api/sync）、`health`（GET /api/health）四个云函数。
+本仓库有**两条独立的业务线**，表与接口各自隔离，共用同一个 CloudBase 环境：
+
+| 线 | 目录 | 契约 | 接口 |
+|---|---|---|---|
+| 今日热搜 | `my-app/` | 根目录 `api-contract.md` | `/api/hot`、`/api/favorites`、`/api/sync` |
+| AI 漫剧 | `ai-drama/` | `ai-drama/api-contract.md` | `/api/drama/episodes`、`/api/drama/watch-logs` |
+
+本文第 1–5 节是**今日热搜线**，第 6 节是 **AI 漫剧线**。
+另有 `health`（GET /api/health，两条线共用）作为健康检查探针。
 
 > 命令里的环境 ID **不写死**，一律从本地 `cloudbaserc.json` 读取：
 > `ENV=$(node -p "require('./cloudbaserc.json').envId")`
@@ -266,3 +274,128 @@ tcb db execute -e "$ENV" --sql 'SELECT "platform",count(*) FROM "trends" WHERE "
 | B站 412 | 缺桌面 UA |
 | 同步有 `skipped` | 跨天存在相同 `platform-rank` 撞主键（表主键没带 date），已按条跳过不影响整体；根治见 §4.2 改表 |
 | 静态站首次访问弹提示页 | 测试域名提示，点「确定访问」即可（不写 cookie，重新导航会再弹） |
+
+---
+
+# 6. AI 漫剧线（ai-drama）
+
+> 完整契约见 `ai-drama/api-contract.md`。数据来源判定：
+> **我自己产出的内容**（不是外部公开数据）+ **要能回看过去** + **不存就没了**
+> → 结论是「用户产出 → 必须入库」，所以**不接任何外部 API**，接口读的是自己的表。
+
+## 6.1 表
+
+| 表 | 角色 | 对应打卡应用 | 说明 |
+|---|---|---|---|
+| `drama_episodes` | **核心表** | `plan_days` | 剧集内容本体（6 集，来自 `assets/js/data.js`） |
+| `drama_watch_logs` | **记录表** | `checkins` | 观看记录，一次观看 = 一次打卡 |
+
+建表 / 种子（幂等，可重复执行）：
+
+```bash
+SQL=$(cat db/drama_schema.sql); tcb db execute -e "$ENV" --sql "$SQL" < /dev/null
+```
+
+```bash
+SQL=$(cat db/drama_seed.sql); tcb db execute -e "$ENV" --sql "$SQL" < /dev/null
+```
+
+> ⚠️ `"order"` 是 **SQL 保留字**，所有 SQL 里必须写成带引号的 `"order"`；
+> 其余驼峰列（`episodeId` / `watchedAt`）同理要加引号，否则会被折叠成小写。
+
+## 6.2 部署步骤
+
+```bash
+tcb fn deploy drama-episodes -e "$ENV" --force
+```
+
+```bash
+tcb fn deploy drama-watchlogs -e "$ENV" --force
+```
+
+配置 HTTP 路由（**必须加 `MSYS_NO_PATHCONV=1`**）：
+
+```bash
+MSYS_NO_PATHCONV=1 tcb service create -e "$ENV" -p /api/drama/episodes -f drama-episodes
+```
+
+```bash
+MSYS_NO_PATHCONV=1 tcb service create -e "$ENV" -p /api/drama/watch-logs -f drama-watchlogs
+```
+
+> ⚠️ **Git Bash 会把 `/api/...` 转成 Windows 绝对路径**，不加 `MSYS_NO_PATHCONV=1` 会创建出
+> `/C:/Users/.../api/drama/episodes` 这种废路由（看着"创建成功"，实际访问 404）。
+> 中招后用 `tcb service delete -e "$ENV" -n drama-episodes` 按函数名删掉重来。
+
+## 6.3 浏览器验证方法
+
+接口地址：
+
+```bash
+node -p "'https://'+require('./cloudbaserc.json').envId+'.service.tcloudbase.com/api/drama/episodes'"
+```
+
+```bash
+node -p "'https://'+require('./cloudbaserc.json').envId+'.service.tcloudbase.com/api/drama/watch-logs'"
+```
+
+期望（`GET /api/drama/episodes`）：
+
+```json
+{"ok":true,"data":[{"id":"ep01","order":1,"title":"群里的光","status":"剧本定稿",
+"duration":"约 90 秒","durationSec":90,"summary":"…","scene":"…","videoUrl":"",
+"cast":["linmo","aqiang"],"updatedAt":"…"}],"count":6,"error":null}
+```
+
+要确认的三件事：
+
+| 看什么 | 期望 |
+|---|---|
+| `count` | 6（6 集全在） |
+| `data[].order` | 1→6 **升序** |
+| `data[].cast` | 是**数组** `["linmo","aqiang"]`（不是字符串） |
+
+`GET /api/drama/watch-logs` 期望：`count` 6，且 `watchedAt` **倒序**（最近的排最前）。
+
+参数与错误：
+
+```
+/api/drama/episodes?limit=3          前 3 集
+/api/drama/episodes?status=已发布     按状态筛（无匹配时 count=0，不是错误）
+/api/drama/watch-logs?episodeId=ep01 只看某一集的观看记录
+/api/drama/episodes?limit=abc        → HTTP 400 + {"ok":false,"data":null,"error":"limit 必须是正整数，例如 limit=3"}
+```
+
+## 6.4 验证「改一条数据库数据、接口跟着变」
+
+① 记下改前状态：
+
+```bash
+curl -s "https://$ENV.service.tcloudbase.com/api/drama/episodes?limit=1"
+```
+
+② 改库（把第 1 集改成「已发布」并填外链）：
+
+```bash
+tcb db execute -e "$ENV" --sql 'UPDATE "drama_episodes" SET "status" = '"'"'已发布'"'"', "videoUrl" = '"'"'https://b23.tv/demo-ep01'"'"' WHERE "id" = '"'"'ep01'"'"';' < /dev/null
+```
+
+③ 重新请求 → `status` 必须变成「已发布」、`videoUrl` 必须出现：
+
+```bash
+curl -s "https://$ENV.service.tcloudbase.com/api/drama/episodes?limit=1"
+```
+
+④ 顺带验证筛选也跟着变（`?status=已发布` 应能筛出这一集）：
+
+```bash
+curl -s "https://$ENV.service.tcloudbase.com/api/drama/episodes?status=%E5%B7%B2%E5%8F%91%E5%B8%83"
+```
+
+⑤ 还原：
+
+```bash
+tcb db execute -e "$ENV" --sql 'UPDATE "drama_episodes" SET "status" = '"'"'剧本定稿'"'"', "videoUrl" = '"'"''"'"' WHERE "id" = '"'"'ep01'"'"';' < /dev/null
+```
+
+> 也可以在 CloudBase 控制台 → 数据库 → `drama_episodes` 表里直接改一行，效果相同。

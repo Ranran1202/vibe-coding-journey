@@ -1,33 +1,51 @@
 // cloudfunctions/sync/index.js
-// Day 17 · 同步任务：POST /api/sync —— 把「真实热搜」写进数据库
+// POST /api/sync —— 从公开榜单拉取真实热搜，写入 trends 表
 //
-// 它在整个作品里的位置：
-//   Day 16 往 trends 表灌的是「示例数据」（seed）。今天要换成**真实热搜**，
-//   页面上才会出现真条目 —— 这是 Day 17 完成标准里「不是假数据」那一条的关键。
-//
-// 对外接口：POST /api/sync   （完整契约见仓库根目录 api-contract.md §3.6）
-// 请求体  ：{ "source": "baidu" | "weibo", "date": "YYYY-MM-DD" }   两个字段都可选
-// 成功返回：{ "ok": true, "data": { source, date, fetched, inserted, updated }, "count": N }
-// 失败返回：{ "ok": false, "error": { "code": "UPSTREAM_UNAVAILABLE" | "INTERNAL_ERROR", ... } }
+// 来源与字段映射**严格按附录 F「同步提示词模板」**实现，三个平台各一个公开 JSON 接口。
 //
 // ============================================================
-// 三个设计决定（都是踩过坑之后的取舍）
+// 一、三个平台的具体来源、必需请求头、字段映射（附录 F）
 //
-// 1) 数据源用「官方公开 JSON 接口」，不抓 HTML、不自建爬虫（契约 §1.4 明确禁止）。
-//    主源百度热搜榜；百度不可用时自动降级微博。两个都不通 → 502，**绝不动库里已有的数据**。
+// | 平台 | 接口 | 取数路径 | 标题 | 热度 | 名次 | 必需请求头 |
+// |---|---|---|---|---|---|---|
+// | 微博 weibo | https://weibo.com/ajax/side/hotSearch | data.realtime[] | word | num | realpos | 桌面 UA + Referer: https://weibo.com/ |
+// | B站 bilibili | https://api.bilibili.com/x/web-interface/search/square?limit=50 | data.trending.list[] | keyword | heat_score | 数组下标+1 | 桌面 UA（B站还要 Referer: https://www.bilibili.com/） |
+// | 抖音 douyin | https://www.douyin.com/aweme/v1/web/hot/search/list/?device_platform=webapp&aid=6383 | data.word_list[] | word | hot_value | position | 桌面 UA + Referer: https://www.douyin.com/ |
 //
-// 2) ★ 入库用「先删当日再插」而不是 upsert ★
-//    原因：热搜榜会掉榜。昨天第 8 名今天掉出去了，upsert 只会让这一行**留在库里**，
-//    页面就会显示一条「其实已经不在榜上」的热搜 —— 属于静默脏数据。
-//    先 DELETE 当日再 INSERT，库里永远是「某个日期的最新一次抓取结果」，语义干净。
-//    删除与插入连在一次调用里、且用单条 SQL 完成插入，不会出现「删了没插上导致空表」。
+// 附录 F 实测的三个「请求头缺一不可」：
+//   · 微博缺 Referer   → 403
+//   · B站缺桌面 UA     → 412（B站的经典风控码）
+//   · 抖音缺 Referer   → HTTP 200 但列表为空（最坑：不报错，静默返回 0 条）
+// 所以每个源的 headers 都按上表原样带齐，且**不用第三方依赖**，只用 Node 18 内置 fetch。
 //
-// 3) ★ 必须同步修复 favorites 的冗余 title ★
-//    favorites.title 是收藏当时的快照（契约 §2.2 明确写了冗余存一份）。
-//    真实数据把 seed 的 `weibo-1` 从「示例热搜一」换成真标题后，如果不修这一列，
-//    「我的收藏」页就会显示旧假标题 —— 两表数据不一致。
-//    关联键用 platform+rank（= trends.id 的构成规则），而不是标题。
-//    注意：**只改 title / platform，不动 note / createdAt / updatedAt**（那是用户的备注和时间）。
+// ============================================================
+// 二、判重规则（附录 F：(platform, title, date) 唯一）
+//
+// 同一平台、同一天、同一标题**只保留一条**：已存在就更新热度与名次，不存在才插入。
+//
+// ⚠️ 本环境的现实约束：trends 表现在只有主键 id(= platform-rank)，
+// **没有** (platform,title,date) 唯一索引，也没有 fetched_at 列（Day 17 不改表结构）。
+// 因此这里做**等价的应用层 upsert**：
+//   ① 先按 (platform, date) 参数化查出当天已有行，按 title 建索引；
+//   ② 命中 title → 更新 heat/rank/url；未命中 → 插入新行；
+//   ③ 插入若撞上主键（跨天存在相同 platform-rank 的行），**跳过并计数**，不中断整批。
+// 若后续授权改表，把上面的应用层判断换成数据库的
+//   ON CONFLICT ("platform","title","date") DO UPDATE 即可，语义完全等价。
+// 改表 SQL 见 cloudfunctions/README.md「可选增强」。
+//
+// ============================================================
+// 三、不绕过任何反爬 / 登录 / 频率限制
+//
+// · 只用**无需登录**的公开榜单接口，不抓 HTML、不解析签名参数、不模拟登录态；
+// · 不带 Cookie / Authorization，UA 只是常规桌面浏览器标识（访问公开榜单的正常行为）；
+// · 单源单次请求、8 秒超时，**失败不重试**（避免对上游形成高频冲击）；
+// · 自带 60 秒同步节流：同一平台 60 秒内重复触发直接拒绝（?force=1 可强制，仅限手动补数）；
+// · 全部失败 → 返回明确中文说明，**且不动库里已有数据**。
+//
+// ============================================================
+// 四、响应形状（与 /api/hot 一致）
+//   成功：{ "ok": true,  "data": { ... }, "count": N }
+//   失败：{ "ok": false, "error": "人能看懂的中文说明" }
 // ============================================================
 
 "use strict";
@@ -42,21 +60,83 @@ function getDb(envId) {
   return dbClient;
 }
 
-// 各平台的「去原平台查看」链接。表里 url 列有 DEFAULT ''，但真实数据给真链更有价值。
-const PLATFORM_HOME = {
-  weibo: "https://s.weibo.com/top/summary",
-  baidu: "https://top.baidu.com/board?tab=realtime",
-  douyin: "https://www.douyin.com/hot",
+// 桌面 UA：三个源都必需（B站缺它直接 412）
+const DESKTOP_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+// 各平台配置：接口、请求头、取数路径与字段映射都集中在这里，改源只动这张表
+const SOURCES = {
+  weibo: {
+    name: "微博",
+    url: "https://weibo.com/ajax/side/hotSearch",
+    headers: { Referer: "https://weibo.com/" },
+    // 返回 data.realtime[]，字段 word / num / realpos
+    pickList: function (json) {
+      const list = json && json.data && json.data.realtime;
+      return Array.isArray(list) ? list : [];
+    },
+    mapItem: function (it, i) {
+      return {
+        title: String(it.word || "").trim(),
+        heat: it.num,
+        rank: Number(it.realpos) > 0 ? Number(it.realpos) : i + 1,
+        url: "https://s.weibo.com/weibo?q=" + encodeURIComponent("#" + (it.word || "") + "#"),
+      };
+    },
+  },
+  bilibili: {
+    name: "B站",
+    url: "https://api.bilibili.com/x/web-interface/search/square?limit=50",
+    headers: { Referer: "https://www.bilibili.com/" },
+    // 返回 data.trending.list[]，字段 keyword / heat_score（没有位置字段，用下标）
+    pickList: function (json) {
+      const list = json && json.data && json.data.trending && json.data.trending.list;
+      return Array.isArray(list) ? list : [];
+    },
+    mapItem: function (it, i) {
+      return {
+        title: String(it.keyword || "").trim(),
+        heat: it.heat_score,
+        rank: i + 1,
+        url: "https://search.bilibili.com/all?keyword=" + encodeURIComponent(it.keyword || ""),
+      };
+    },
+  },
+  douyin: {
+    name: "抖音",
+    url: "https://www.douyin.com/aweme/v1/web/hot/search/list/?device_platform=webapp&aid=6383",
+    headers: { Referer: "https://www.douyin.com/" },
+    // 返回 data.word_list[]，字段 word / hot_value / position
+    pickList: function (json) {
+      const list = json && json.data && json.data.word_list;
+      return Array.isArray(list) ? list : [];
+    },
+    mapItem: function (it, i) {
+      return {
+        title: String(it.word || "").trim(),
+        heat: it.hot_value,
+        rank: Number(it.position) > 0 ? Number(it.position) : i + 1,
+        url: "https://www.douyin.com/search/" + encodeURIComponent(it.word || ""),
+      };
+    },
+  },
 };
 
-// 只同步契约 §2.1 定义过的三个平台 key（platform 列的取值受 config.js 约束）
-const SUPPORTED = ["baidu", "weibo", "douyin"];
+const SUPPORTED = Object.keys(SOURCES); // ['weibo','bilibili','douyin']
 
-function reply(statusCode, payload) {
+function ok(payload) {
+  return {
+    statusCode: 200,
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify(Object.assign({ ok: true }, payload)),
+  };
+}
+
+function fail(statusCode, message) {
   return {
     statusCode: statusCode,
     headers: { "Content-Type": "application/json; charset=utf-8" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ok: false, error: message }),
   };
 }
 
@@ -70,8 +150,7 @@ function todayInBeijing() {
   return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
-// 带超时的 fetch：云函数有 20s 上限，上游卡住时必须主动放弃，
-// 否则函数被平台 kill，用户拿到的是无意义的超时而不是我们能解释的 502。
+// 带超时的 fetch：云函数有 20s 上限，上游卡住必须主动放弃
 async function fetchWithTimeout(url, options, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(function () {
@@ -84,223 +163,135 @@ async function fetchWithTimeout(url, options, timeoutMs) {
   }
 }
 
-// 统一取出「本平台第 N 名」的真实链接：
-// 公开接口给的 url 常常是跳转页，热度更实在的做法是给平台榜单首页。
-function urlFor(platform, rawUrl) {
-  if (typeof rawUrl === "string" && /^https?:\/\//.test(rawUrl)) return rawUrl;
-  return PLATFORM_HOME[platform] || "";
-}
-
-// 百度热度是数字分数（如 7957710），转成跟示例数据一致的中文单位更好读。
-function formatHeat(score) {
-  const n = Number(score);
+// 热度统一成与既有数据一致的中文单位（'523 万'），纯数字也原样保留
+function formatHeat(v) {
+  const n = Number(v);
   if (!Number.isFinite(n) || n <= 0) return "";
-  if (n >= 100000000) return (n / 100000000).toFixed(1).replace(/\.0$/, "") + " 亿";
-  if (n >= 10000) return Math.round(n / 10000) + " 万";
+  if (n >= 1e8) return (n / 1e8).toFixed(1).replace(/\.0$/, "") + " 亿";
+  if (n >= 1e4) return Math.round(n / 1e4) + " 万";
   return String(n);
 }
 
-// ------------------------------------------------------------
-// 解析器：把各来源的原始 JSON 归一成 [{rank,title,heat,url}]
-// 每个都做防御性解析 —— 上游字段随时可能变，这里挂了要能报错而不是静默返回空数组。
-// ------------------------------------------------------------
-
-function parseBaidu(json) {
-  const cards = (json && json.data && json.data.cards) || (json && json.cards) || [];
-  if (!Array.isArray(cards)) return [];
-
-  // ⚠️ 实测踩坑记录（2026-10-06 用 curl 抓真实响应逐层核对）：
-  //
-  // 百度这个接口会因为 platform 参数不同，返回**两种完全不同的嵌套结构**：
-  //
-  //   platform=pc   （本函数现在用的源）
-  //     data.cards[0] = { component:"hotList", content:[ 50 条 ] }   ← 扁平，直接就是条目
-  //     每条字段：word / index / hotScore / desc / rawUrl / hotChange / img
-  //
-  //   platform=wise （移动端，第一版误用的源）
-  //     data.cards[0] = { component:"tabTextList", content:[ { content:[ 50 条 ] } ] }
-  //                                                          ↑ 多一层"内容组"包装
-  //     且每条**没有 hotScore / desc**，还夹着一条 isTop 置顶项。
-  //
-  // 第一版解析器直接读 card.content[]：
-  //   - 对 wise 拿到的是那个包装对象（没有 word）→ 判空 → 报「字段结构可能已变」→ 502
-  //   - 对 pc   倒是能读通，但因为没走 pc，等于白写
-  // 所以下面用「逐层下探」的写法，两种结构都能吃，并且优先找含 hotScore 的那一层。
-  let list = null;
-  let bestScore = -1;
-  function scan(node, depth) {
-    if (!Array.isArray(node) || depth > 4) return;
-    const isEntries =
-      node.length && node[0] && typeof node[0] === "object" && node[0].word;
-    if (isEntries) {
-      // 同样都是条目数组时，选字段更全的那一层（含 hotScore 的优先）
-      const score =
-        (node[0].hotScore !== undefined ? 2 : 0) + (node[0].desc !== undefined ? 1 : 0);
-      if (score > bestScore) {
-        bestScore = score;
-        list = node;
-      }
-      return;
-    }
-    for (const it of node) {
-      if (it && typeof it === "object" && Array.isArray(it.content)) scan(it.content, depth + 1);
-    }
-  }
-  scan(cards, 0);
-  if (!list) return [];
-
-  const entries = list.filter(function (it) {
-    return it && it.word && !it.isTop; // 置顶项（isTop）不是榜单名次，丢掉
-  });
-
-  // 实测 pc 端的 index 是 0 基（0~49）；wise 端是 1 基。
-  // 不能直接拿 index 当 rank，否则会整体差一位（第 1 名变第 0 名）。
-  // 判据：所有 index 都 >= 0 且存在 0 → 判定为 0 基。
-  const hasZero = entries.some(function (it) {
-    return Number(it.index) === 0;
-  });
-  const offset = hasZero ? 1 : 0;
-
-  return entries.map(function (it, i) {
-    const idx = Number(it.index);
-    const rank = Number.isFinite(idx) ? idx + offset : i + 1;
-    return {
-      rank: rank,
-      title: String(it.word || "").trim(),
-      // 热度：pc 端有 hotScore（数字）→ 转成「781 万」这种中文单位，跟前端示例数据风格一致；
-      //       没有就退回 hotChange（涨跌标记，如 "热"），最后兜底空串。
-      heat: formatHeat(it.hotScore) || String(it.hotChange || "").trim(),
-      // 优先 rawUrl（能直接点开的真实搜索结果页），退回 url，最后退回平台首页
-      url: urlFor("baidu", it.rawUrl || it.url || it.indexUrl),
-    };
-  });
-}
-
-function parseWeibo(json) {
-  // 兼容两种常见形态：data.realtime（新浪公开榜）或 data.band_list
-  const raw =
-    (json && json.data && (json.data.realtime || json.data.band_list)) ||
-    (json && json.data && Array.isArray(json.data) && json.data) ||
-    [];
-  if (!Array.isArray(raw) || !raw.length) return [];
-  return raw.map(function (it, i) {
-    const word = it.word || it.note || it.name || "";
-    return {
-      rank: i + 1,
-      title: String(word).trim(),
-      heat: it.num ? formatHeat(it.num) : String(it.raw_hot || "").trim(),
-      url: urlFor("weibo", it.url || it.scheme),
-    };
-  });
-}
-
-// ------------------------------------------------------------
-// 取数：主源百度 → 降级微博
-// ------------------------------------------------------------
-async function fetchBaidu() {
-  // ★ 必须用 platform=pc ★：pc 端返回扁平结构且带 hotScore/desc/rawUrl；
-  //   wise（移动端）返回多一层包装、没有热度值，还会夹置顶项（详见 parseBaidu 注释）。
-  const url = "https://top.baidu.com/api/board?platform=pc&tab=realtime";
+/**
+ * 拉一个平台的榜单并归一成 [{rank,title,heat,url}]。
+ * 只带附录 F 规定的必需请求头，失败给出能定位原因的中文说明（不重试）。
+ */
+async function fetchSource(key) {
+  const cfg = SOURCES[key];
   const resp = await fetchWithTimeout(
-    url,
+    cfg.url,
     {
-      headers: {
-        // 不带 UA 容易被挡；这是公开榜单页，不是伪装登录态
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
-        Accept: "application/json,text/plain,*/*",
-      },
+      headers: Object.assign(
+        { "User-Agent": DESKTOP_UA, Accept: "application/json, text/plain, */*" },
+        cfg.headers
+      ),
     },
     8000
   );
-  if (!resp.ok) throw new Error("百度热搜接口 HTTP " + resp.status);
-  const json = await resp.json();
-  const items = parseBaidu(json);
-  if (!items.length) throw new Error("百度热搜接口返回了空列表（字段结构可能已变）");
-  return items;
-}
 
-async function fetchWeibo() {
-  const url = "https://weibo.com/ajax/side/hotSearch";
-  const resp = await fetchWithTimeout(
-    url,
-    {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
-        Accept: "application/json,text/plain,*/*",
-        Referer: "https://weibo.com/",
-      },
-    },
-    8000
-  );
-  if (!resp.ok) throw new Error("微博热搜接口 HTTP " + resp.status);
-  const json = await resp.json();
-  const items = parseWeibo(json);
-  if (!items.length) throw new Error("微博热搜接口返回了空列表（字段结构可能已变）");
-  return items;
-}
+  if (!resp.ok) {
+    // 把附录 F 记录的特征码翻成中文，便于一眼定位
+    let hint = "";
+    if (key === "bilibili" && resp.status === 412) hint = "（B站风控 412，通常是缺少桌面 UA）";
+    if (key === "weibo" && resp.status === 403) hint = "（微博 403，通常是缺少 Referer）";
+    throw new Error(cfg.name + "接口返回 HTTP " + resp.status + hint);
+  }
 
-// ------------------------------------------------------------
-// 入库：先删当日 → 再插新数据 → 再修 favorites 的冗余标题
-// ------------------------------------------------------------
-async function save(db, platform, date, items) {
-  const ids = items.map(function (it) {
-    return platform + "-" + it.rank;
+  const json = await resp.json();
+  const raw = cfg.pickList(json);
+  if (!raw.length) {
+    // 抖音的典型症状：Referer 缺失时 200 但列表为空
+    throw new Error(cfg.name + "接口返回了空列表（可能为风控或字段结构变化）");
+  }
+
+  const items = [];
+  raw.forEach(function (it, i) {
+    const m = cfg.mapItem(it, i);
+    if (!m.title) return; // 标题为空的条目直接丢弃
+    items.push({
+      rank: m.rank,
+      title: m.title,
+      heat: formatHeat(m.heat),
+      url: m.url,
+    });
   });
 
-  // ① 删掉这批 id 在「其它日期」下的残留（防止同一条热搜换日期后重复）
-  if (ids.length) {
-    const prev = await db.from("trends").delete().in("id", ids);
-    if (prev.error) throw new Error("清理旧数据失败：" + prev.error.message);
-  }
-  // ② 删掉「本平台 + 当天」的全部行 —— 保证库里是本次抓取的最新榜
-  const cleared = await db
+  if (!items.length) throw new Error(cfg.name + "接口没有解析出有效条目");
+  return items;
+}
+
+/**
+ * 应用层 upsert（判重键：platform + title + date，等价于附录 F 的唯一索引约束）。
+ * 返回 { inserted, updated, skipped }。
+ */
+async function upsert(db, platform, date, items) {
+  // ① 参数化查当天该平台已有行（SDK 构造器，无 SQL 字符串拼接）
+  const existRes = await db
     .from("trends")
-    .delete()
-    .eq("date", date)
-    .eq("platform", platform);
-  if (cleared.error) throw new Error("清理当日数据失败：" + cleared.error.message);
+    .select('"id","title","rank"')
+    .eq("platform", platform)
+    .eq("date", date);
+  if (existRes.error) {
+    throw new Error("查询已有数据失败：" + (existRes.error.message || "数据库返回了错误"));
+  }
 
-  // ③ 插入真实数据
-  const rows = items.map(function (it) {
-    return {
-      id: platform + "-" + it.rank,
-      platform: platform,
-      rank: it.rank,
-      title: it.title,
-      heat: it.heat || "",
-      url: it.url || "",
-      date: date,
-    };
+  const byTitle = {};
+  (Array.isArray(existRes.data) ? existRes.data : []).forEach(function (r) {
+    byTitle[r.title] = r;
   });
-  const ins = await db.from("trends").insert(rows);
-  if (ins.error) throw new Error("写入 trends 失败：" + ins.error.message);
 
-  // ④ 修 favorites 的冗余 title：只改标题/平台，绝不动 note 与时间
-  const favs = await db.from("favorites").select('"id","trendId"');
-  let fixed = 0;
-  if (!favs.error && Array.isArray(favs.data)) {
-    for (const f of favs.data) {
-      // trendId 形如 baidu-3 → 按 平台+排名 找到刚同步进来的真标题
-      const idx = f.trendId ? String(f.trendId).lastIndexOf("-") : -1;
-      if (idx < 0) continue;
-      const fp = String(f.trendId).slice(0, idx);
-      const fr = String(f.trendId).slice(idx + 1);
-      if (fp !== platform) continue;
-      const hit = items.find(function (it) {
-        return String(it.rank) === fr;
-      });
-      if (!hit || !hit.title) continue;
+  let inserted = 0;
+  let updated = 0;
+  let skipped = 0;
+
+  for (const it of items) {
+    const hit = byTitle[it.title];
+    if (hit) {
+      // ② 命中标题 → 只更新热度/名次/链接，主键与入库时间不动
       const up = await db
-        .from("favorites")
-        .update({ title: hit.title, platform: platform })
-        .eq("id", f.id);
-      if (!up.error) fixed++;
+        .from("trends")
+        .update({ rank: it.rank, heat: it.heat, url: it.url })
+        .eq("id", hit.id);
+      if (up.error) skipped++;
+      else updated++;
+    } else {
+      // ③ 未命中 → 插入
+      const ins = await db.from("trends").insert({
+        id: platform + "-" + it.rank,
+        platform: platform,
+        rank: it.rank,
+        title: it.title,
+        heat: it.heat,
+        url: it.url,
+        date: date,
+      });
+      if (ins.error) {
+        // 主键撞车（跨天存在相同 platform-rank）时跳过，不让整批失败
+        skipped++;
+      } else {
+        inserted++;
+        byTitle[it.title] = { id: platform + "-" + it.rank }; // 防同批次内标题重复
+      }
     }
   }
 
-  return { inserted: rows.length, favoritesRefreshed: fixed };
+  return { inserted: inserted, updated: updated, skipped: skipped };
+}
+
+// 60 秒节流用的查询：取该平台当天最近一次入库时间
+async function lastSyncAt(db, platform, date) {
+  const res = await db
+    .from("trends")
+    .select('"createdAt"')
+    .eq("platform", platform)
+    .eq("date", date);
+  if (res.error || !Array.isArray(res.data) || !res.data.length) return null;
+  let latest = null;
+  res.data.forEach(function (r) {
+    const t = r.createdAt ? Date.parse(r.createdAt) : NaN;
+    if (!Number.isNaN(t) && (latest === null || t > latest)) latest = t;
+  });
+  return latest;
 }
 
 /**
@@ -317,25 +308,20 @@ exports.main = async (event, context) => {
     try {
       body = JSON.parse(event.body);
     } catch (e) {
-      return reply(400, {
-        ok: false,
-        error: { code: "BAD_REQUEST", message: "请求体不是合法 JSON" },
-      });
+      return fail(400, "请求体不是合法的 JSON");
     }
   }
   body = body || {};
 
-  // ---- 参数校验：source 只认契约里的三个平台 ----
+  // ---- 参数校验 ----
+  const sourceRaw = body.source;
   let sources;
-  if (body.source === undefined || body.source === null || body.source === "") {
-    sources = ["baidu"]; // 缺省主源；不做「全部来源」是因为微博源稳定性差，默认只保证一条可靠链路
-  } else if (SUPPORTED.indexOf(String(body.source)) === -1) {
-    return reply(400, {
-      ok: false,
-      error: { code: "BAD_REQUEST", message: "不支持的来源" },
-    });
+  if (sourceRaw === undefined || sourceRaw === null || sourceRaw === "") {
+    sources = ["weibo"]; // 缺省只同步微博（最稳的一条链路，也避免一次请求打三个上游）
+  } else if (SUPPORTED.indexOf(String(sourceRaw)) === -1) {
+    return fail(400, "不支持的来源，目前只支持：" + SUPPORTED.join(" / "));
   } else {
-    sources = [String(body.source)];
+    sources = [String(sourceRaw)];
   }
 
   const date =
@@ -343,74 +329,60 @@ exports.main = async (event, context) => {
       ? todayInBeijing()
       : String(body.date);
   if (!isValidDate(date)) {
-    return reply(400, {
-      ok: false,
-      error: { code: "BAD_REQUEST", message: "date 格式应为 YYYY-MM-DD" },
-    });
+    return fail(400, "date 格式不对，应该写成 YYYY-MM-DD，例如 2026-10-06");
   }
 
+  const force = body.force === true || body.force === 1 || body.force === "1";
+
   const db = getDb(envId);
-  const result = { date: date, source: "", fetched: 0, inserted: 0, updated: 0, detail: [] };
+  const detail = [];
 
   for (const source of sources) {
-    try {
-      const items = source === "weibo" ? await fetchWeibo() : await fetchBaidu();
-      const saved = await save(db, source, date, items);
-      result.source = source;
-      result.fetched = items.length;
-      result.inserted += saved.inserted;
-      result.detail.push({
-        source: source,
-        fetched: items.length,
-        inserted: saved.inserted,
-        favoritesRefreshed: saved.favoritesRefreshed,
-      });
-    } catch (err) {
-      // 主源失败 → 自动降级备用源（附录 F 的降级思路）
-      const msg = String((err && err.message) || err);
-      const canFallback = source === "baidu" && sources.length === 1;
-      if (canFallback) {
-        try {
-          const items = await fetchWeibo();
-          const saved = await save(db, "weibo", date, items);
-          result.source = "weibo";
-          result.fetched = items.length;
-          result.inserted += saved.inserted;
-          result.detail.push({
-            source: "weibo",
-            fetched: items.length,
-            inserted: saved.inserted,
-            favoritesRefreshed: saved.favoritesRefreshed,
-            fallbackFrom: "baidu",
-            fallbackReason: msg,
-          });
-          continue;
-        } catch (err2) {
-          // 两个源都挂了：返回 502，且**库里数据原样保留**（前端据此标注「示例数据」）
-          return reply(502, {
-            ok: false,
-            error: {
-              code: "UPSTREAM_UNAVAILABLE",
-              message: "数据源暂不可用（已尝试百度与微博）",
-              detail: msg + " / " + String((err2 && err2.message) || err2),
-            },
-          });
-        }
+    const cfg = SOURCES[source];
+
+    // ---- 频率自我保护：同一平台 60 秒内不重复打上游 ----
+    if (!force) {
+      const last = await lastSyncAt(db, source, date);
+      if (last && Date.now() - last < 60 * 1000) {
+        detail.push({
+          source: source,
+          status: "skipped",
+          reason: "距上次同步不足 60 秒，已跳过（如需强制请传 force=1）",
+        });
+        continue;
       }
-      return reply(502, {
-        ok: false,
-        error: {
-          code: "UPSTREAM_UNAVAILABLE",
-          message: "数据源暂不可用",
-          detail: msg,
-        },
+    }
+
+    try {
+      const items = await fetchSource(source);
+      const saved = await upsert(db, source, date, items);
+      detail.push(
+        Object.assign({ source: source, name: cfg.name, status: "ok", fetched: items.length }, saved)
+      );
+    } catch (err) {
+      // 单个源失败不影响其它源；库里已有数据保持原样
+      detail.push({
+        source: source,
+        name: cfg.name,
+        status: "failed",
+        reason: String((err && err.message) || err),
       });
     }
   }
 
-  return reply(200, {
-    ok: true,
-    data: result,
-    count: result.inserted,
+  const failed = detail.filter(function (d) {
+    return d.status === "failed";
+  });
+  const total = detail.reduce(function (n, d) {
+    return n + (d.inserted || 0) + (d.updated || 0);
+  }, 0);
+
+  if (failed.length === detail.length) {
+    return fail(502, "数据源暂不可用：" + failed.map(function (d) { return d.reason; }).join("；"));
+  }
+
+  return ok({
+    data: { date: date, detail: detail, changed: total },
+    count: total,
   });
 };

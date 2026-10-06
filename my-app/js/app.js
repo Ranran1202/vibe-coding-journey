@@ -175,7 +175,13 @@
       })
       .then(function (json) {
         if (!json || json.ok !== true) {
-          throw new Error((json && json.error && json.error.message) || "接口返回 ok:false");
+          // 后端 error 有两种形状：新版是**中文字符串**，旧版是 {code,message} 对象。
+          // 两种都认，避免只认一种时把真实原因吞成一句空泛的「接口返回 ok:false」。
+          var errText =
+            typeof json.error === "string"
+              ? json.error
+              : json.error && json.error.message;
+          throw new Error(errText || "接口返回 ok:false");
         }
         // 接口会告诉我们这批数据是「今天同步的真实数据」还是「历史 seed 兜底数据」
         state.dataSource = json.source === "seed" ? "seed" : "live";
@@ -321,6 +327,18 @@
   //   连上云端接口且拿到当日同步的真实数据 → 显示「真实数据 · 来源：百度热搜榜 · <日期>」
   //   退回本地示例数据（接口不可用 / 本地预览）→ 显示「示例数据」并带原因
   //   —— 这一行就是完成标准里「页面上显示的真实数据」的自证：截图里一眼能看出真假。
+  // 把数据里**实际出现**的 platform key 翻成中文名（读 config.js 的 PLATFORMS，不写死）
+  function platformNamesOf(items) {
+    var seen = {};
+    (items || []).forEach(function (it) {
+      if (it.platform) seen[it.platform] = 1;
+    });
+    var names = (window.PLATFORMS || [])
+      .filter(function (p) { return seen[p.key]; })
+      .map(function (p) { return p.name; });
+    return names.length ? names.join("、") : "公开榜单";
+  }
+
   function renderDataSourceBadge() {
     var el = document.getElementById("dataSourceBadge");
     if (!el) return;
@@ -333,7 +351,12 @@
       el.textContent = "";
       el.className = "data-source";
     } else {
-      el.textContent = "真实数据 · 来源：百度热搜榜" + (state.sourceDate ? " · " + state.sourceDate : "");
+      // 来源不再写死「百度热搜榜」：同步云函数按附录 F 接的是微博 / B站 / 抖音三个平台，
+      // 榜单第一来自哪个平台是动态的，标注必须跟着**实际返回的数据**走，否则就是假标注。
+      el.textContent =
+        "真实数据 · 来源：" + platformNamesOf(state.items) +
+        (state.sourceDate ? " · " + state.sourceDate : "") +
+        " · 按热度倒序前 " + state.items.length + " 条";
       el.className = "data-source is-live";
     }
   }

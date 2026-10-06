@@ -15,7 +15,7 @@
 | 前端 | `my-app` —— **原生 JS 静态站**（`index.html` + `js/*.js`，**无构建步骤**），托管于 CloudBase 静态网站托管 |
 | 后端 | 腾讯云 CloudBase（云开发）· 普通云函数 + HTTP 访问服务 |
 | 数据库 | CloudBase **PostgreSQL 17.11**（真 SQL）。**2026-10-05（Day 16）已建表**。脚本：`db/schema.sql`（建表）、`db/seed.sql`（补种子·幂等）、`db/reset.sql`（重置·先删后建）；执行与验证步骤见 `db/README.md` |
-| 契约版本 | **v0.6.0** |
+| 契约版本 | **v0.7.0** |
 | 最后更新 | 2026-10-06 |
 | 推导依据 | `my-app/index.html` 的 4 个视图 + `js/app.js` 的数据加载逻辑 + `js/data.js` / `js/config.js` / `js/store.js` 的数据结构 |
 | 关联文档 | `TECH_DESIGN.md`（§4 数据模型、§5 API、§6.2 Phase 2 数据流） |
@@ -51,16 +51,21 @@
 **失败**（`ok: false`）
 
 ```json
-{ "ok": false, "error": { "code": "BAD_REQUEST", "message": "缺少必填参数 trendId" } }
+{ "ok": false, "error": "date 参数格式不对，应该写成 YYYY-MM-DD，例如 2026-10-06" }
 ```
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `ok` | boolean | `true` = 成功，`false` = 失败 |
-| `error.code` | string | 机器可读错误码（见 1.3） |
-| `error.message` | string | 人类可读说明（中文，可直接展示给用户） |
+| `error` | string | **人能看懂的中文说明**，可直接展示给用户 |
+
+> ⚠️ **v0.7.0 起 `error` 由对象改为字符串**（成功/失败结构对称，前端少一层判空）。
+> 仍**兼容**读 `error.message` 的旧消费方：后端只发字符串，前端两种形状都认
+> （见 `my-app/js/app.js`）。错误码改由 **HTTP 状态码**承担语义，见 1.3。
 
 ### 1.3 错误码
+
+> v0.7.0 起 `error` 是字符串，**机器可读语义由 HTTP 状态码承担**（下表 `error.code` 列为历史字段，仅供旧版本对照）。
 
 | HTTP | `error.code` | 含义 | 前端表现 |
 |---|---|---|---|
@@ -140,7 +145,7 @@
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `id` | string | 主键，形如 `weibo-1`（= `platform` + `-` + `rank`），**与前端 `app.js` 的 `itemId()` 完全一致** |
-| `platform` | string | 来源平台 key：`weibo` / `baidu` / `douyin` |
+| `platform` | string | 来源平台 key：`weibo` / `baidu` / `douyin` / `bilibili`（Day 17 同步源按附录 F 为微博 / B站 / 抖音） |
 | `rank` | number | 排名 |
 | `title` | string | 标题 |
 | `heat` | string | 热度（**原样字符串**，如 `"523 万"`，不转数字） |
@@ -267,7 +272,11 @@
 |---|---|
 | 方法 | `GET` |
 | 路径 | `/api/hot` |
-| 查询参数 | `platform`（可选，`weibo`/`baidu`/`douyin`；缺省返回全部）<br>`date`（可选，`YYYY-MM-DD`；缺省为当天，按北京时间）<br>`limit`（可选，正整数，上限 100，缺省不限）—— 余力加练 |
+| 查询参数 | `platform`（可选，`weibo`/`baidu`/`douyin`/`bilibili`；缺省返回全部）<br>`date`（可选，`YYYY-MM-DD`；缺省为当天，按北京时间）<br>`limit`（可选，正整数，上限 100，**缺省 20**） |
+
+**排序**：**按热度倒序**，同热度按名次升序（结果稳定可复现）。
+⚠️ `trends."heat"` 是 TEXT（`'781 万'`），直接 `ORDER BY heat DESC` 会按**字典序**排
+（`'9 万' > '781 万'`），必须解析成数值再排；接口把换算结果一并放在 `heatNum` 里，便于核对。
 
 **成功响应**（HTTP `200`）
 
@@ -275,9 +284,9 @@
 {
   "ok": true,
   "data": [
-    { "id": "baidu-1", "rank": 1, "title": "订单排到2027年！又一行业爆单了", "heat": "781 万", "platform": "baidu", "url": "https://www.baidu.com/s?wd=...", "date": "2026-10-06", "createdAt": "2026-10-06T16:36:57.887636+08:00" }
+    { "id": "douyin-1", "rank": 1, "title": "2026诺贝尔物理学奖公布", "heat": "1203 万", "heatNum": 12030000, "platform": "douyin", "url": "https://www.douyin.com/search/...", "date": "2026-10-06", "createdAt": "2026-10-06T17:52:11.123456+08:00" }
   ],
-  "count": 50,
+  "count": 20,
   "source": "synced",
   "date": "2026-10-06"
 }
@@ -289,7 +298,8 @@
 | `data[].rank` | number | 排名 |
 | `data[].title` | string | 标题 |
 | `data[].heat` | string | 热度（原样字符串，如 `"781 万"`） |
-| `data[].platform` | string | 来源平台 |
+| `data[].heatNum` | number | ⚠️ **接口层换算，表里没有这一列**：`heat` 解析出的数值，排序依据，便于前端核对倒序是否生效 |
+| `data[].platform` | string | 来源平台（`weibo` / `baidu` / `douyin` / `bilibili`） |
 | `data[].url` | string | 去原平台查看的链接 |
 | `data[].date` | string | 数据日期 `YYYY-MM-DD`（= 查询参数回显） |
 | `data[].createdAt` | string | 入库时间，TIMESTAMPTZ 序列化（ISO 8601 带时区偏移） |
@@ -306,8 +316,8 @@
 
 | 场景 | HTTP | body |
 |---|---|---|
-| `date` 格式不对 | `400` | `{ "ok": false, "error": { "code": "BAD_REQUEST", "message": "date 格式应为 YYYY-MM-DD" } }` |
-| 服务端错误 | `500` | `{ "ok": false, "error": { "code": "INTERNAL_ERROR", "message": "暂时拿不到数据" } }` |
+| `date` 格式不对 | `400` | `{ "ok": false, "error": "date 参数格式不对，应该写成 YYYY-MM-DD，例如 2026-10-06" }` |
+| 服务端错误 | `500` | `{ "ok": false, "error": "读取热搜数据失败：……" }` |
 
 ---
 
@@ -392,17 +402,24 @@
 
 **数据源（免费公开 JSON 接口，不自建爬虫）**
 
-| 优先级 | 来源 | 接口 | 说明 |
-|---|---|---|---|
-| 1 | 百度热搜榜 | `https://top.baidu.com/api/board?platform=pc&tab=realtime` | 默认源，字段含 `word` / `desc` / `hotScore` / `rawUrl` |
-| 2 | 微博热搜榜 | `https://weibo.com/ajax/side/hotSearch` | 百度不可用时自动降级（对应 §1.3 的降级思路） |
+> **v0.7.0 起同步源按附录 F 换轨为微博 / B站 / 抖音**（原百度源下线，Day 17 早些时候的百度实现已废弃）。
 
-> ⚠️ 百度接口**必须用 `platform=pc`**：`wise`（移动端）返回多一层「内容组」包装、
-> 没有 `hotScore` 热度值，还会夹 `isTop` 置顶项（Day 17 用 curl 逐层核对两种响应后确定的，详见
-> `cloudfunctions/sync/index.js` 的 `parseBaidu` 注释）。v0.5.0 之前本文档误写为 `wise`，已修正。
+| 平台 | 接口 | 取数路径 | 标题 | 热度 | 名次 | 必需请求头 |
+|---|---|---|---|---|---|---|
+| 微博 `weibo` | `https://weibo.com/ajax/side/hotSearch` | `data.realtime[]` | `word` | `num` | `realpos` | 桌面 UA + `Referer: https://weibo.com/` |
+| B站 `bilibili` | `https://api.bilibili.com/x/web-interface/search/square?limit=50` | `data.trending.list[]` | `keyword` | `heat_score` | 下标+1 | 桌面 UA + `Referer: https://www.bilibili.com/` |
+| 抖音 `douyin` | `https://www.douyin.com/aweme/v1/web/hot/search/list/?device_platform=webapp&aid=6383` | `data.word_list[]` | `word` | `hot_value` | `position` | 桌面 UA + `Referer: https://www.douyin.com/` |
 
-两个源都不可用 → 返回 `502 UPSTREAM_UNAVAILABLE`，此时**保留库里的旧数据不动**，
-前端按返回的 `source` 字段在页面标注「示例数据」（见 §3.3 的 `source` 说明）。
+**请求头缺一不可（附录 F 实测）**：微博缺 `Referer` → 403；B站缺桌面 UA → 412；
+抖音缺 `Referer` → HTTP 200 但列表为空（静默失败，最易误判）。
+只用 Node 18 内置 `fetch`，**不引第三方依赖**。
+
+**合规约束**：只用无需登录的公开榜单接口，不抓 HTML、不解析签名参数、不模拟登录态、
+不带 Cookie/Authorization；单源单次请求、8 秒超时、**失败不重试**；同一平台 **60 秒节流**
+（`force=1` 可强制）。全部失败 → `502` + 中文说明，**且不动库里已有数据**。
+
+**判重规则（附录 F）**：`(platform, title, date)` 唯一 —— 已存在则更新热度与名次，不存在才插入。
+当前表无该唯一索引，实现为**等价的应用层 upsert**；改表 SQL 见 `cloudfunctions/README.md` §4.2。
 
 > **⚠️ 已知数据一致性问题（Day 17 实测发现，Day 18 处理）**
 >
@@ -451,9 +468,9 @@
 
 | 场景 | HTTP | body |
 |---|---|---|
-| `source` 非法 | `400` | `{ "ok": false, "error": { "code": "BAD_REQUEST", "message": "不支持的来源" } }` |
-| 公开数据源不可用 | `502` | `{ "ok": false, "error": { "code": "UPSTREAM_UNAVAILABLE", "message": "数据源暂不可用" } }` |
-| 服务端错误 | `500` | `{ "ok": false, "error": { "code": "INTERNAL_ERROR", "message": "同步失败" } }` |
+| `source` 非法 | `400` | `{ "ok": false, "error": "不支持的来源，目前只支持：weibo / bilibili / douyin" }` |
+| 公开数据源不可用 | `502` | `{ "ok": false, "error": "数据源暂不可用：……" }`（**库里已有数据保持原样**） |
+| 服务端错误 | `500` | `{ "ok": false, "error": "同步失败：……" }` |
 
 ---
 
@@ -578,6 +595,7 @@
 | v0.4.0 | 2026-10-05 | **数据表落地**：CloudBase PostgreSQL 17.11 已建 `trends` / `favorites` 两表（各 5 行种子），DDL 落 `db/schema.sql`、种子落 `db/seed.sql`（幂等）；明确「列名必须加双引号保留驼峰」这条 SQL 书写规则 | **表结构定稿**，Day 17 读接口按此实现；接口数量与字段未变 |
 | v0.5.0 | 2026-10-05 | **一致性回写**：新增 §2.4「契约字段 ↔ 数据库列」逐字段核对表（15 个字段全部一致）；补齐脚本清单（新增 `db/reset.sql` 先删后建的重置脚本、`db/README.md` 执行与 select 验证手册）；`seed.sql` / `reset.sql` 的时间字段改为固定值以满足「可复现」 | 无接口变更；表结构未变。**契约与数据库从此互为依据，改一边必须先改契约** |
 | v0.6.0 | 2026-10-06 | **GET 读接口落地**：`/api/hot`（§3.3）与 `/api/favorites`（§3.5）由占位转**已实现**，补 `data[].date` / `data[].createdAt` / 顶层 `source` 字段与 `limit` 查询参数；`/api/sync`（§3.6）落地：百度源 URL 修正为 `platform=pc`、请求体缺省语义改为「只同步 baidu」、响应补 `fetched` / `detail[].favoritesRefreshed`；新增 §3.6「已知数据一致性问题」：同步的级联删除会连带清掉指向被删热搜的收藏（5 条种子收藏剩 3 条），Day 18 定修法。**前端另行修复** `Promise.all` 结果未解构导致页面永远显示示例数据的 bug（接口与契约一致、页面取数姿势错） | `GET /api/hot`、`GET /api/favorites`、`POST /api/sync` 正式可用；表结构未变 |
+| v0.7.0 | 2026-10-06 | **响应形状统一 + 同步源换轨**：失败响应 `error` 由对象 `{code,message}` 改为**中文字符串**（成功/失败结构对称）；`/api/hot` 排序改为**按热度倒序返回前 20 条**（`heat` 是 TEXT，须解析成数值排，字典序是错的），新增 `data[].heatNum`；`/api/sync` 按附录 F 换轨为**微博 / B站 / 抖音**三平台（原百度源下线），补齐各源必需请求头与字段映射，判重键 `(platform,title,date)` 落地为应用层 upsert（改表 SQL 见 `cloudfunctions/README.md`），新增 60 秒节流与 `force` 参数；前端平台清单补 `bilibili` | **破坏性变更**：消费方读 `error.message` 的地方要改成读 `error` 字符串（前端已兼容两种）；表结构未变 |
 
 ---
 

@@ -1,24 +1,42 @@
 // cloudfunctions/hot/index.js
-// Day 17 · 第一个读取接口：GET /api/hot
+// GET /api/hot —— 「今日热搜」案例的**第一个读取接口**
 //
-// 它在整个作品里的位置：
-//   前 16 天的作品数据全写在浏览器里（my-app/js/data.js 的 HOT_DATA）。
-//   今天这个接口把「热搜列表」搬到云端数据库，前端改成 fetch 它 —— 作品第一次真正联网取业务数据。
-//
-// 对外接口：GET /api/hot?date=&platform=&limit=   （完整契约见仓库根目录 api-contract.md §3.3）
-// 成功返回：{ "ok": true, "data": [ {id,rank,title,heat,platform,url,date,createdAt}, ... ], "count": N }
-// 失败返回：{ "ok": false, "error": { "code": "...", "message": "..." } }
+// 职责：查 trends 表，**按热度倒序**返回前 20 条。
 //
 // ============================================================
-// ★ 今天最关键的一行：app.rdb({ database: "public" })
+// 一、对外契约（统一形状，成功/失败结构对称）
 //
-// 这里的 database 参数**不是数据库名，而是 PostgreSQL 的 schema 名**。
-// 依据（读 @cloudbase/node-sdk 3.18.3 源码 dist/cloudbase.js 第 98–120 行）：
-//     const { instance = 'default', database = envId } = options || {};
-//     headers: { 'X-Db-Instance': instance, 'Accept-Profile': database, 'Content-Profile': database }
-//   —— 它被塞进 PostgREST 的 Accept-Profile 头。不传时默认取 envId，
-//   而 envId（形如 wb-test01-xxxx）不是合法 schema 名 → 上游返回 Invalid schema → 500。
-// 这就是 Day 17 最初 hot / favorites 两个接口都 500 的根因。
+//   成功：{ "ok": true,  "data": [ ...20 条... ], "count": 20, "source": "...", "date": "..." }
+//   失败：{ "ok": false, "error": "人能看懂的中文说明" }        ← error 是**字符串**，不是对象
+//
+//   失败时 HTTP 状态码也一起给：参数错 400、数据库错 500。
+// ============================================================
+//
+// ============================================================
+// 二、三条硬性要求怎么落地的
+//
+// 1) 【SQL 必须参数化，禁止字符串拼接】
+//    本项目是 CloudBase + PostgreSQL，云函数里**不手写 SQL 字符串**，
+//    一律用官方 SDK 的查询构造器（PostgREST 风格）：
+//        db.from("trends").select(...).eq("date", date).limit(n)
+//    构造器的筛选值由 SDK 走 HTTP 参数传给数据网关，不做字符串拼 SQL，
+//    因此不存在 SQL 注入面。全文件没有任何一处 "SELECT ... " + 变量 的写法。
+//
+// 2) 【按热度倒序】⚠️ 这里有个真实的坑
+//    trends."heat" 是 TEXT（存的是 '781 万'、'523 万' 这种带中文单位的字符串），
+//    如果直接让数据库 ORDER BY heat DESC，PostgreSQL 会按**字典序**排：
+//    '9 万' > '781 万' > '523 万'（因为 '9' > '7'），结果是错的。
+//    正确做法：把热度**解析成数值**再排序（见下面的 heatToNumber）。
+//    排序放在应用层做，数据库只负责按 (date, platform) 把行取回来。
+//
+// 3) 【前 20 条】
+//    默认 limit=20，可用 ?limit=N 调整（上限 100）。
+// ============================================================
+//
+// ============================================================
+// 三、连库姿势（本项目踩过坑，别改）
+//    app.rdb({ database: "public" }) —— database 参数其实是 PostgreSQL 的 **schema 名**，
+//    不传时默认取 envId，而 envId 不是合法 schema → 上游报 Invalid schema → 接口 500。
 // ============================================================
 
 "use strict";
@@ -34,11 +52,20 @@ function getDb(envId) {
   return dbClient;
 }
 
-function reply(statusCode, payload) {
+// 统一响应：失败时 error 一律是「人能看懂的中文说明」（字符串）
+function ok(payload) {
+  return {
+    statusCode: 200,
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify(Object.assign({ ok: true }, payload)),
+  };
+}
+
+function fail(statusCode, message) {
   return {
     statusCode: statusCode,
     headers: { "Content-Type": "application/json; charset=utf-8" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ok: false, error: message }),
   };
 }
 
@@ -51,8 +78,46 @@ function isValidDate(s) {
 
 function todayInBeijing() {
   // 服务器时钟是 UTC，而「当日热搜」按北京时间算，所以手动 +8 小时。
-  // 用 toISOString 再截前 10 位，拿到 UTC 的 YYYY-MM-DD（与 trends."date" 的存储格式一致）。
   return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * 把 TEXT 热度解析成数值，用于正确排序。
+ *
+ * 之所以需要它：trends."heat" 是 TEXT，形如 '781 万' / '1.2 亿' / '7957710' / '热'。
+ * 数据库按字典序排会得出错误名次，所以统一在这里换算成数字。
+ *
+ * 支持：'781 万' → 7810000；'1.2 亿' → 120000000；'7957710' → 7957710；
+ *      '523.5 万' → 5235000；'' / '热' / '爆' → 0（排最后）。
+ */
+function heatToNumber(s) {
+  if (s === null || s === undefined) return 0;
+  const str = String(s).trim();
+  if (!str) return 0;
+  const m = str.match(/^(\d+(?:\.\d+)?)\s*(亿|万|w|W|k|K)?$/);
+  if (!m) return 0; // 纯中文标记（如「热」「爆」）无法换算，排最后
+  const n = parseFloat(m[1]);
+  if (!Number.isFinite(n)) return 0;
+  const unit = m[2];
+  if (unit === "亿") return n * 1e8;
+  if (unit === "万" || unit === "w" || unit === "W") return n * 1e4;
+  if (unit === "k" || unit === "K") return n * 1e3;
+  return n;
+}
+
+// 热度数值排在返回体里一并给前端，便于页面核对「倒序」是否真的生效
+function withHeatNumber(row) {
+  return {
+    id: row.id,
+    rank: row.rank,
+    title: row.title,
+    heat: row.heat,
+    heatNum: heatToNumber(row.heat),
+    platform: row.platform,
+    url: row.url == null ? "" : row.url,
+    date: row.date,
+    createdAt: row.createdAt,
+  };
 }
 
 /**
@@ -64,81 +129,63 @@ exports.main = async (event, context) => {
   const envId = (context && context.namespace) || "";
   const query = (event && event.queryStringParameters) || {};
 
-  // ---- 1. 参数校验：date 格式不对要明确报 400，而不是静默返回空列表 ----
+  // ---- 1. 参数校验：不对就明确报 400，而不是静默返回空列表 ----
   const dateRaw = query.date;
   let date;
   if (dateRaw !== undefined && dateRaw !== null && dateRaw !== "") {
     if (!isValidDate(String(dateRaw))) {
-      return reply(400, {
-        ok: false,
-        error: { code: "BAD_REQUEST", message: "date 格式应为 YYYY-MM-DD" },
-      });
+      return fail(400, "date 参数格式不对，应该写成 YYYY-MM-DD，例如 2026-10-06");
     }
     date = String(dateRaw);
   } else {
-    date = todayInBeijing(); // 缺省 = 当天
+    date = todayInBeijing(); // 缺省 = 当天（北京时间）
   }
 
-  // platform 是可选筛选（前端也会在本地筛，这里只是让接口更完整）
   const platformRaw = query.platform;
   const platform = platformRaw ? String(platformRaw) : null;
 
-  // ---- 2. 余力加练：limit 限制返回条数，上限 100 ----
+  // limit：默认 20（题目要求「前 20 条」），上限 100
   const limitRaw = Number(query.limit);
   const limit =
-    Number.isInteger(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 100) : Infinity;
+    Number.isInteger(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 100) : 20;
 
   try {
+    // ---- 2. 参数化查询（构造器写法，不拼 SQL 字符串）----
     let q = getDb(envId)
       .from("trends")
       .select('"id","rank","title","heat","platform","url","date","createdAt"')
       .eq("date", date);
-
     if (platform) q = q.eq("platform", platform);
-    // 按 rank 数字升序（rank 列建表时特意选 INTEGER 而不是 TEXT，
-    // 就是为了保证 1,2,10 的顺序，而不是字符串排序的 1,10,2）
-    q = q.order("rank", { ascending: true });
 
     const res = await q;
     if (res.error) {
-      throw new Error(res.error.message || JSON.stringify(res.error));
+      return fail(500, "读取热搜数据失败：" + (res.error.message || "数据库返回了错误"));
     }
 
     const rows = Array.isArray(res.data) ? res.data : [];
-    const data = rows.slice(0, limit).map(function (r) {
-      return {
-        id: r.id,
-        rank: r.rank,
-        title: r.title,
-        heat: r.heat,
-        platform: r.platform,
-        url: r.url == null ? "" : r.url,
-        date: r.date,
-        createdAt: r.createdAt,
-      };
-    });
 
-    // source = 数据哪天入库的，便于一眼看出「页面上显示的是不是今天同步进来的真实数据」。
-    // 判据：任何一行的 date 等于今天 → 是当日真实数据；否则是历史 seed 兜底数据。
+    // ---- 3. 按热度倒序（数值比较），同热度时按名次升序，保证结果稳定可复现 ----
+    const sorted = rows
+      .map(withHeatNumber)
+      .sort(function (a, b) {
+        if (b.heatNum !== a.heatNum) return b.heatNum - a.heatNum;
+        return a.rank - b.rank;
+      });
+
+    const data = sorted.slice(0, limit);
+
+    // source：让前端一眼看出这批数据是「当日同步的真实数据」还是「历史种子兜底」
     const isRealToday = data.some(function (r) {
       return r.date === todayInBeijing();
     });
 
-    return reply(200, {
-      ok: true,
+    return ok({
       data: data,
       count: data.length,
-      source: isRealToday ? "synced" : "seed", // seed 时前端会标注「示例数据」
+      source: isRealToday ? "synced" : "seed",
       date: date,
     });
   } catch (err) {
-    return reply(500, {
-      ok: false,
-      error: {
-        code: "INTERNAL_ERROR",
-        message: "暂时拿不到数据",
-        detail: String((err && err.message) || err),
-      },
-    });
+    return fail(500, "读取热搜数据失败：" + String((err && err.message) || err));
   }
 };

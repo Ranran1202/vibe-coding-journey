@@ -20,7 +20,10 @@
     view: "home",        // 当前视图：home / fav / platforms / detail / about
     detailId: null,      // 详情页对应的热搜 id（platform-rank）
     loading: false,      // 首页/收藏列表是否正在加载
-    error: false         // 首页/收藏列表是否加载失败
+    error: false,        // 首页/收藏列表是否加载失败
+    dataSource: "live",  // Day 17：数据来自哪里 —— live（云端真实接口）/ seed（本地示例兜底）
+    sourceDate: "",      // 接口返回的数据日期（YYYY-MM-DD）
+    sourceNote: ""       // 退回示例数据时的原因（用于页面提示）
   };
 
   // 平台列表页独立的数据状态（与首页列表互不干扰，便于各自演示四态）
@@ -103,23 +106,90 @@
     btn.textContent = fav ? "★ 已收藏" : "☆ 收藏";
   }
 
-  // 数据加载：真实环境会换成 fetch(...)。演示用静态数据，支持地址栏参数触发不同状态：
+  // 数据加载：Day 17 起改读**云端真实接口** GET /api/hot（此前是本地静态 HOT_DATA）。
+  // 演示用的地址栏参数仍然保留，方便随时复现四种状态：
   //   ?fail=1  模拟加载失败（错误态）  ?empty=1 模拟成功但 0 条（空态）  ?slow=1 延长加载时间（便于观察加载态）
+  // 兜底策略：接口不可用时**不白屏**，退回本地 data.js 并标记为「示例数据」，
+  //          对应 Day 17 清单里的降级要求（数据源不可用 → 保留 seed 并标注）。
+  function currentApiBase() {
+    // ★ 静态站与接口不在同一个域！
+    //   静态站：https://<envId>-<租户号>.tcloudbaseapp.com   （CloudBase 静态托管）
+    //   接口  ：https://<envId>.service.tcloudbase.com       （HTTP 访问服务，/api/*）
+    // 直接 fetch("/api/hot") 会打到静态托管自己 → 404 → 页面退回示例数据（Day 17 实测踩过）。
+    // 平台会自动在接口响应里带 access-control-allow-origin = 静态站域名，跨域由平台兜底，无需手配。
+    // 规则：从当前主机名反推环境 ID，再拼出接口域名；识别不出（file:// 本地预览等）返回空串走兜底。
+    var host = location.hostname || "";
+    var m = host.match(/^(.+?)-\d+\.tcloudbaseapp\.com$/);
+    if (m) return "https://" + m[1] + ".service.tcloudbase.com";
+    if (host.indexOf(".service.tcloudbase.com") !== -1) return location.origin;
+    return "";
+  }
+
+  function fallbackToSeed(reason) {
+    state.dataSource = "seed";
+    state.sourceNote = reason;
+    return { items: (window.HOT_DATA || []), source: "seed" };
+  }
+
   function loadData() {
-    return new Promise(function (resolve, reject) {
-      var params = new URLSearchParams(location.search);
-      var fail = params.get("fail") === "1";
-      var empty = params.get("empty") === "1";
-      var slow = params.get("slow") === "1";
-      var delay = slow ? 2000 : 120;
-      setTimeout(function () {
-        if (fail) {
-          reject(new Error("模拟加载失败"));
-          return;
+    var params = new URLSearchParams(location.search);
+    var fail = params.get("fail") === "1";
+    var empty = params.get("empty") === "1";
+    var slow = params.get("slow") === "1";
+
+    // 演示开关优先：这两个是纯前端造的假状态，不该真去打扰后端。
+    if (fail) {
+      return new Promise(function (_r, reject) {
+        setTimeout(function () { reject(new Error("模拟加载失败")); }, slow ? 2000 : 120);
+      });
+    }
+    if (empty) {
+      return new Promise(function (resolve) {
+        setTimeout(function () { resolve({ items: [], source: "empty" }); }, slow ? 2000 : 120);
+      });
+    }
+
+    var base = currentApiBase();
+    // fetch 不可用（极老浏览器 / jsdom 测试环境）时同样退回示例数据，保证页面可用不白屏。
+    // slow=1 的语义是「延长加载时间便于观察加载态」，兜底路径同样要遵守（测试断言依赖这一点）。
+    if (!base || typeof fetch !== "function") {
+      return new Promise(function (resolve) {
+        setTimeout(function () { resolve(fallbackToSeed("本地预览，未连接云端接口")); }, slow ? 2000 : 120);
+      });
+    }
+
+    var ctl = new AbortController();
+    var timer = setTimeout(function () { ctl.abort(); }, slow ? 12000 : 6000);
+    // slow=1 时人为垫 2 秒：真实接口太快会让「加载中」一闪而过，观察不到（Day 13 起的演示语义）
+    var slowDelay = slow
+      ? new Promise(function (resolve) { setTimeout(resolve, 2000); })
+      : Promise.resolve();
+    return Promise.all([slowDelay, fetch(base + "/api/hot", { signal: ctl.signal })])
+      .then(function (results) {
+        // ⚠️ Promise.all 的结果是个数组：[slowDelay 的结果(undefined), fetch 的 Response]。
+        //   必须按下标取出 Response —— 第一版直接把整个数组当 Response 用（resp.ok === undefined），
+        //   导致接口明明是通的、页面却永远退回示例数据（Day 17 真机验证抓到的）。
+        var resp = results[1];
+        if (!resp || !resp.ok) throw new Error("HTTP " + (resp ? resp.status : "未响应"));
+        return resp.json();
+      })
+      .then(function (json) {
+        if (!json || json.ok !== true) {
+          throw new Error((json && json.error && json.error.message) || "接口返回 ok:false");
         }
-        resolve(empty ? [] : (window.HOT_DATA || []));
-      }, delay);
-    });
+        // 接口会告诉我们这批数据是「今天同步的真实数据」还是「历史 seed 兜底数据」
+        state.dataSource = json.source === "seed" ? "seed" : "live";
+        state.sourceDate = json.date || "";
+        return { items: Array.isArray(json.data) ? json.data : [], source: json.source || "live" };
+      })
+      .catch(function (err) {
+        // 连不上接口：退回示例数据，让页面仍有内容可看（不白屏）
+        return fallbackToSeed(String((err && err.message) || err));
+      })
+      .then(function (r) {
+        clearTimeout(timer);
+        return r;
+      });
   }
 
   function renderTabs() {
@@ -247,9 +317,31 @@
     }
   }
 
+  // Day 17：数据来源标注。
+  //   连上云端接口且拿到当日同步的真实数据 → 显示「真实数据 · 来源：百度热搜榜 · <日期>」
+  //   退回本地示例数据（接口不可用 / 本地预览）→ 显示「示例数据」并带原因
+  //   —— 这一行就是完成标准里「页面上显示的真实数据」的自证：截图里一眼能看出真假。
+  function renderDataSourceBadge() {
+    var el = document.getElementById("dataSourceBadge");
+    if (!el) return;
+    if (state.loading) { el.textContent = ""; el.className = "data-source"; return; }
+
+    if (state.dataSource === "seed") {
+      el.textContent = "示例数据" + (state.sourceNote ? "（" + state.sourceNote + "）" : "");
+      el.className = "data-source is-seed";
+    } else if (state.dataSource === "empty") {
+      el.textContent = "";
+      el.className = "data-source";
+    } else {
+      el.textContent = "真实数据 · 来源：百度热搜榜" + (state.sourceDate ? " · " + state.sourceDate : "");
+      el.className = "data-source is-live";
+    }
+  }
+
   function renderList() {
     var ul = document.getElementById("hotList");
     if (!ul) return;
+    renderDataSourceBadge();   // Day 17：先更新「真实数据 / 示例数据」来源标注
 
     // Day 13：加载中状态（spinner），优先于其余分支
     if (state.loading) {
@@ -476,14 +568,14 @@
     state.loading = true;
     setRefreshBtn(true);                            // 进入「刷新中…」并禁用
     renderList();                                  // Day 13：立即显示「加载中」状态
-    loadData().then(function (data) {
-      state.items = data;
+    loadData().then(function (r) {
+      state.items = r.items || [];
       state.error = false;
       state.loading = false;
       renderList();
       refreshing = false;
       setRefreshBtn(false);                         // 恢复按钮
-      showToast("已刷新 ✓ 共 " + data.length + " 条");
+      showToast("已刷新 ✓ 共 " + state.items.length + " 条");
     }).catch(function () {
       state.error = true;
       state.loading = false;

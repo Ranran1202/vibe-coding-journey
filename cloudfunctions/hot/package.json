@@ -1,0 +1,11 @@
+{
+  "name": "hot",
+  "version": "0.1.0",
+  "description": "Day 17 云函数：GET /api/hot，从 CloudBase PostgreSQL 的 trends 表读取当日热搜",
+  "main": "index.js",
+  "private": true,
+  "license": "MIT",
+  "dependencies": {
+    "@cloudbase/node-sdk": "latest"
+  }
+}

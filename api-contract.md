@@ -15,8 +15,8 @@
 | 前端 | `my-app` —— **原生 JS 静态站**（`index.html` + `js/*.js`，**无构建步骤**），托管于 CloudBase 静态网站托管 |
 | 后端 | 腾讯云 CloudBase（云开发）· 普通云函数 + HTTP 访问服务 |
 | 数据库 | CloudBase **PostgreSQL 17.11**（真 SQL）。**2026-10-05（Day 16）已建表**。脚本：`db/schema.sql`（建表）、`db/seed.sql`（补种子·幂等）、`db/reset.sql`（重置·先删后建）；执行与验证步骤见 `db/README.md` |
-| 契约版本 | **v0.5.0** |
-| 最后更新 | 2026-10-05 |
+| 契约版本 | **v0.6.0** |
+| 最后更新 | 2026-10-06 |
 | 推导依据 | `my-app/index.html` 的 4 个视图 + `js/app.js` 的数据加载逻辑 + `js/data.js` / `js/config.js` / `js/store.js` 的数据结构 |
 | 关联文档 | `TECH_DESIGN.md`（§4 数据模型、§5 API、§6.2 Phase 2 数据流） |
 
@@ -256,7 +256,7 @@
 
 ---
 
-### 3.3 `GET /api/hot` —— 热搜列表 📝 占位
+### 3.3 `GET /api/hot` —— 热搜列表 ✅ 已实现
 
 **用途**：首页（`#/home`）与「我的收藏」（`#/fav`）共用的**热搜列表读取接口**。
 前端拿到后在本地做平台筛选与关键词筛选（`filteredItems()`），所以**筛选参数是可选优化，不作为必需**。
@@ -267,7 +267,7 @@
 |---|---|
 | 方法 | `GET` |
 | 路径 | `/api/hot` |
-| 查询参数 | `platform`（可选，`weibo`/`baidu`/`douyin`；缺省返回全部）<br>`date`（可选，`YYYY-MM-DD`；缺省为当天） |
+| 查询参数 | `platform`（可选，`weibo`/`baidu`/`douyin`；缺省返回全部）<br>`date`（可选，`YYYY-MM-DD`；缺省为当天，按北京时间）<br>`limit`（可选，正整数，上限 100，缺省不限）—— 余力加练 |
 
 **成功响应**（HTTP `200`）
 
@@ -275,9 +275,11 @@
 {
   "ok": true,
   "data": [
-    { "id": "weibo-1", "rank": 1, "title": "示例热搜一：某地迎来初雪刷屏", "heat": "523 万", "platform": "weibo", "url": "https://s.weibo.com/top/summary" }
+    { "id": "baidu-1", "rank": 1, "title": "订单排到2027年！又一行业爆单了", "heat": "781 万", "platform": "baidu", "url": "https://www.baidu.com/s?wd=...", "date": "2026-10-06", "createdAt": "2026-10-06T16:36:57.887636+08:00" }
   ],
-  "count": 1
+  "count": 50,
+  "source": "synced",
+  "date": "2026-10-06"
 }
 ```
 
@@ -286,10 +288,19 @@
 | `data[].id` | string | 唯一标识，= `platform-rank`，**与前端 `itemId()` 一致**，收藏/详情都靠它 |
 | `data[].rank` | number | 排名 |
 | `data[].title` | string | 标题 |
-| `data[].heat` | string | 热度（原样字符串，如 `"523 万"`） |
+| `data[].heat` | string | 热度（原样字符串，如 `"781 万"`） |
 | `data[].platform` | string | 来源平台 |
 | `data[].url` | string | 去原平台查看的链接 |
-| `count` | number | 本次返回条数 |
+| `data[].date` | string | 数据日期 `YYYY-MM-DD`（= 查询参数回显） |
+| `data[].createdAt` | string | 入库时间，TIMESTAMPTZ 序列化（ISO 8601 带时区偏移） |
+| `count` | number | 本次返回条数（`limit` 生效后的实际条数） |
+| `source` | string | ⚠️ **接口层计算，表里没有这一列**：`synced` = 当日同步的真实数据；`seed` = 历史种子兜底（前端据此标注「示例数据」） |
+| `date` | string | ⚠️ **接口层回显，表里没有这一列**：本次查询的数据日期（缺省 = 当天北京时间） |
+
+> **Day 17 发现的两个「对不上」**（实现后回写）：
+> ① `source` / `date` 在**响应顶层**而 `data[]` 里也有 `date`——两者含义不同，前者是查询口径、后者是行数据；
+> ② `favorites.trendId` 指向的 trends 行被 `POST /api/sync` 的「先删当日再插」连带**外键级联删除**
+>   （详见 §3.6 的「⚠️ 已知数据一致性问题」）。
 
 **错误返回**
 
@@ -331,7 +342,7 @@
 
 ---
 
-### 3.5 `GET /api/favorites` —— 收藏列表 📝 占位
+### 3.5 `GET /api/favorites` —— 收藏列表 ✅ 已实现
 
 **用途**：「我的收藏」视图（`#/fav`）的**列表读取接口**。前端在此视图下还会对**标题与备注**做关键词筛选。
 
@@ -341,6 +352,7 @@
 |---|---|
 | 方法 | `GET` |
 | 路径 | `/api/favorites` |
+| 查询参数 | `limit`（可选，正整数，**上限 100**；缺省返回全部）—— 见下方「余力加练」 |
 | 入参 | 无（后续加用户系统后补 `userId`） |
 
 **成功响应**（HTTP `200`）
@@ -362,17 +374,48 @@
 | `data[].title` / `platform` | string | 收藏时的标题 / 来源 |
 | `data[].note` | string | 我的备注，可为空字符串 |
 | `data[].createdAt` / `updatedAt` | string | 收藏时间 / 备注更新时间 |
-| `count` | number | 本次返回条数 |
+| `count` | number | 本次返回条数（= `limit` 生效后的实际条数） |
+
+**余力加练 · `limit` 查询参数**：`?limit=2` 只返回前 2 条收藏。
+超出上限或非正整数时**不报错**，按「不限条数」处理；`limit=1000` 会被夹到 100。
+（`GET /api/hot` 的 `limit` 同理。）
 
 **错误返回**：`500 INTERNAL_ERROR`。
 
 ---
 
-### 3.6 `POST /api/sync` —— 手动拉取当日真实热搜 📝 占位
+### 3.6 `POST /api/sync` —— 手动拉取当日真实热搜 ✅ 已实现
 
 **用途**：从**免费公开来源**拉取当日真实热搜，写入 `trends` 表（**手动触发**，对应首页的「手动刷新」按钮；本课程**不做定时自动同步**）。
 
 **实现计划**：**Day 17 实现**。
+
+**数据源（免费公开 JSON 接口，不自建爬虫）**
+
+| 优先级 | 来源 | 接口 | 说明 |
+|---|---|---|---|
+| 1 | 百度热搜榜 | `https://top.baidu.com/api/board?platform=pc&tab=realtime` | 默认源，字段含 `word` / `desc` / `hotScore` / `rawUrl` |
+| 2 | 微博热搜榜 | `https://weibo.com/ajax/side/hotSearch` | 百度不可用时自动降级（对应 §1.3 的降级思路） |
+
+> ⚠️ 百度接口**必须用 `platform=pc`**：`wise`（移动端）返回多一层「内容组」包装、
+> 没有 `hotScore` 热度值，还会夹 `isTop` 置顶项（Day 17 用 curl 逐层核对两种响应后确定的，详见
+> `cloudfunctions/sync/index.js` 的 `parseBaidu` 注释）。v0.5.0 之前本文档误写为 `wise`，已修正。
+
+两个源都不可用 → 返回 `502 UPSTREAM_UNAVAILABLE`，此时**保留库里的旧数据不动**，
+前端按返回的 `source` 字段在页面标注「示例数据」（见 §3.3 的 `source` 说明）。
+
+> **⚠️ 已知数据一致性问题（Day 17 实测发现，Day 18 处理）**
+>
+> 同步采用「先删当日旧数据再插入」（保证榜单语义干净），其中按 `id IN (baidu-1..baidu-50)` 清理旧行时，
+> `favorites."trendId"` 上的外键 **`ON DELETE CASCADE`** 会把指向这些行的收藏**连带删掉**：
+> Day 16 灌入的 5 条种子收藏（`fav-1`~`fav-5`）里，`fav-2`（baidu-2）、`fav-5`（baidu-5）
+> 在首次同步真实数据后被级联删除，只剩 3 条 —— 收藏静默丢了 2 条。
+>
+> 这就是「接口返回的数据里，哪一项和你建的表对不上」的实例：
+> `GET /api/favorites` 的 `count`（3）与建表时的 5 条对不上。
+> 候选修法（Day 18 定）：a) 外键改 `ON DELETE RESTRICT` + 同步时先改写收藏指向；
+> b) 收藏表去掉外键、靠应用层维护（`title` 本来就是冗余快照，条目没了也能显示）。
+> 今天不改表结构（任务清单明确「今日不做」），先记录。
 
 **请求**
 
@@ -380,23 +423,29 @@
 |---|---|
 | 方法 | `POST` |
 | 路径 | `/api/sync` |
-| 请求体 | `{ "source": "weibo" }`（`source` 可选；缺省同步全部来源） |
+| 请求体 | `{ "source": "baidu" }`（`source` 可选，只认 `baidu`/`weibo`/`douyin`；**缺省只同步 `baidu`** —— 微博源稳定性差，缺省只保证一条可靠链路）<br>`{ "date": "2026-10-06" }`（`date` 可选；缺省为当天，便于补数/回放） |
 
 **成功响应**（HTTP `200`）
 
 ```json
 {
   "ok": true,
-  "data": { "source": "weibo", "date": "2026-10-04", "inserted": 50, "updated": 0 }
+  "data": {
+    "date": "2026-10-06", "source": "baidu", "fetched": 50, "inserted": 50, "updated": 0,
+    "detail": [ { "source": "baidu", "fetched": 50, "inserted": 50, "favoritesRefreshed": 0 } ]
+  },
+  "count": 50
 }
 ```
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `data.source` | string | 本次同步的来源 |
+| `data.source` | string | 本次实际使用的来源（主源失败降级时 ≠ 请求里的 source） |
 | `data.date` | string | 同步的数据日期 |
-| `data.inserted` | number | 新增条数 |
-| `data.updated` | number | 更新条数 |
+| `data.fetched` | number | 从上游拉到的条数 |
+| `data.inserted` | number | 写入 `trends` 的条数 |
+| `data.updated` | number | 预留字段，当前恒为 0（写入策略是「整批重插」而非逐条更新） |
+| `data.detail[].favoritesRefreshed` | number | 顺带刷新了收藏表里多少条冗余标题 |
 
 **错误返回**
 
@@ -528,6 +577,7 @@
 | v0.3.0 | 2026-10-04 | **按 `my-app` 页面需求推导重写**：新增 `GET /api/platforms`（平台清单，页面需要）、`GET /api/hot/:id`（详情页可独立访问）；新增 §2 数据表（`trends` / `favorites`）与 §4 页面↔接口对照；补 `favorites.updatedAt`、`trendId` 迁移提示 | 占位阶段，无代码影响 |
 | v0.4.0 | 2026-10-05 | **数据表落地**：CloudBase PostgreSQL 17.11 已建 `trends` / `favorites` 两表（各 5 行种子），DDL 落 `db/schema.sql`、种子落 `db/seed.sql`（幂等）；明确「列名必须加双引号保留驼峰」这条 SQL 书写规则 | **表结构定稿**，Day 17 读接口按此实现；接口数量与字段未变 |
 | v0.5.0 | 2026-10-05 | **一致性回写**：新增 §2.4「契约字段 ↔ 数据库列」逐字段核对表（15 个字段全部一致）；补齐脚本清单（新增 `db/reset.sql` 先删后建的重置脚本、`db/README.md` 执行与 select 验证手册）；`seed.sql` / `reset.sql` 的时间字段改为固定值以满足「可复现」 | 无接口变更；表结构未变。**契约与数据库从此互为依据，改一边必须先改契约** |
+| v0.6.0 | 2026-10-06 | **GET 读接口落地**：`/api/hot`（§3.3）与 `/api/favorites`（§3.5）由占位转**已实现**，补 `data[].date` / `data[].createdAt` / 顶层 `source` 字段与 `limit` 查询参数；`/api/sync`（§3.6）落地：百度源 URL 修正为 `platform=pc`、请求体缺省语义改为「只同步 baidu」、响应补 `fetched` / `detail[].favoritesRefreshed`；新增 §3.6「已知数据一致性问题」：同步的级联删除会连带清掉指向被删热搜的收藏（5 条种子收藏剩 3 条），Day 18 定修法。**前端另行修复** `Promise.all` 结果未解构导致页面永远显示示例数据的 bug（接口与契约一致、页面取数姿势错） | `GET /api/hot`、`GET /api/favorites`、`POST /api/sync` 正式可用；表结构未变 |
 
 ---
 

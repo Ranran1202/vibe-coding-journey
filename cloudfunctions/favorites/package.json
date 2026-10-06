@@ -1,0 +1,11 @@
+{
+  "name": "favorites",
+  "version": "0.1.0",
+  "description": "Day 17 云函数：GET /api/favorites，从 CloudBase PostgreSQL 的 favorites 表读取收藏列表",
+  "main": "index.js",
+  "private": true,
+  "license": "MIT",
+  "dependencies": {
+    "@cloudbase/node-sdk": "latest"
+  }
+}

@@ -110,6 +110,28 @@ body {
   font-size: 0.82rem;
 }
 
+/* Day 17：数据来源标注（真实数据 / 示例数据）。
+   真实数据用绿色实心点、示例数据用琥珀色点 —— 截图里一眼能分辨，
+   避免「拿假数据交差」这种最不该发生的失误。 */
+.data-source {
+  margin: -0.5rem 0 0.8rem;
+  font-size: 0.82rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.data-source:empty { display: none; }
+.data-source::before {
+  content: "";
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.data-source.is-live { color: #17673f; }
+.data-source.is-live::before { background: #1a9c5b; }
+.data-source.is-seed { color: #8a5a06; }
+.data-source.is-seed::before { background: #d9930b; }
+
 /* 手动刷新按钮：加载态（转圈 + 灰显 + 禁用），与成功/失败提示配合 */
 .btn-refresh.is-loading { opacity: .6; cursor: not-allowed; }
 .btn-refresh.is-loading::before {

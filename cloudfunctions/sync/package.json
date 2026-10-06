@@ -1,0 +1,11 @@
+{
+  "name": "sync",
+  "version": "0.1.0",
+  "description": "Day 17 云函数：POST /api/sync，从免费公开源拉取当日真实热搜并写入 trends 表",
+  "main": "index.js",
+  "private": true,
+  "license": "MIT",
+  "dependencies": {
+    "@cloudbase/node-sdk": "latest"
+  }
+}

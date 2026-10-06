@@ -46,7 +46,10 @@
     <!-- 筛选结果数量（屏幕阅读器可朗读，aria-live 实时播报） -->
     <p class="result-count" id="resultCount" aria-live="polite"></p>
 
-    <!-- 列表（由 js/app.js 用 js/data.js 渲染；支持 正常/加载/错误/空 四态） -->
+    <!-- Day 17：数据来源标注（真实数据 / 示例数据），由 js/app.js 的 renderDataSourceBadge() 填充 -->
+    <p class="data-source" id="dataSourceBadge" aria-live="polite"></p>
+
+    <!-- 列表（由 js/app.js 渲染；Day 17 起数据来自云端接口 GET /api/hot，支持 正常/加载/错误/空 四态） -->
     <ul class="hot-list" id="hotList"></ul>
   </main>
 

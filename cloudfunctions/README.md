@@ -1,4 +1,4 @@
-# 云函数部署与验证手册（Day 17 起 · Day 18 增补写入接口）
+# 云函数部署与验证手册（Day 17 起 · Day 18 增补写入接口 · Day 19 分层重构）
 
 本仓库有**两条独立的业务线**，表与接口各自隔离，共用同一个 CloudBase 环境：
 
@@ -506,3 +506,168 @@ tcb db execute -e "$ENV" --sql 'DELETE FROM favorites WHERE "id" LIKE '"'"'fav-i
 | 时间格式 | PostgreSQL 的 `TIMESTAMPTZ` 会按会话时区吐 `2026-10-08T19:51:34.442+08:00`；接口已在应用层统一转成 UTC `...Z`（契约 §1.4） |
 | 级联删除 | Day 17 遗留的 `ON DELETE CASCADE` 问题已定**方案 b（去外键）**，脚本 `db/fix_favorites_fk.sql` **写好未执行**（改表要等确认）；写入接口已用「先查 trends 再插」绕开外键报错 |
 | `Idempotency-Key` 格式 | 只允许 `[A-Za-z0-9_-]` 且 ≤ 64 字符（因为它要进主键），不合法直接 `400` |
+
+---
+
+## 8. Day 19 ｜分层重构：把「查数据库」搬到数据访问层
+
+> 今日核心题：**拆完之后，「查数据库」这段代码从哪移到了哪？**
+> 一句话答案：从 **5 个云函数各自的 `index.js`**，搬到了 **`shared/db.js` 这一个文件**；
+> 每个函数目录里的 `cloudfunctions/<fn>/lib/db.js` 只是它的**自动副本**（由 `scripts/sync-shared.js` 复制，不要手改）。
+
+### 8.1 分层示意图
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  调用方：浏览器 / curl / 前端页面                                    │
+└──────────────────────────────────────────────────────────────────┘
+                              │  HTTP（/api/hot、/api/favorites …）
+                              ▼
+┌──────────────────────────────────────────────────────────────────┐
+│  ① 接口层   cloudfunctions/<fn>/index.js                          │
+│     · 解析请求：query / body / header                             │
+│     · 校验参数 → 不合法就 400 + 中文提示                            │
+│     · 业务判断：判重(409)、幂等(200)、上游不存在(404)、方法(405)      │
+│     · 组装响应：{ ok, data, error } + CORS + X-Request-Id           │
+│     ❌ 这里不再出现任何表名、列名、SQL                               │
+└──────────────────────────────────────────────────────────────────┘
+                              │  dao.listFavorites(envId, { ... })
+                              │  「我要什么数据」  ≠  「怎么查」
+                              ▼
+┌──────────────────────────────────────────────────────────────────┐
+│  ② 数据访问层   shared/db.js   ←── 唯一真源（改库操作只改这里）      │
+│     · 连库：cloudbase.init().rdb({ database: "public" })           │
+│     · 列清单 COLUMNS：驼峰列一律加英文双引号                        │
+│     · 查询：.from().select().eq().order().limit()                  │
+│     · 兜底：pick() 驼峰读值 / toIso() 时间归一 / dbError() 中文报错   │
+└──────────────────────────────────────────────────────────────────┘
+                              │  node scripts/sync-shared.js
+                              │  （云函数按目录打包，跨目录 require 会挂）
+                              ▼
+     cloudfunctions/{hot,favorites,sync,drama-episodes,drama-watchlogs}/lib/db.js
+                              │  以上 5 份都是同一份副本，内容完全一致
+                              ▼
+┌──────────────────────────────────────────────────────────────────┐
+│  ③ 数据库   PostgreSQL 17.11 · schema = public                    │
+│     trends / favorites / drama_episodes / drama_watch_logs         │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+用 mermaid 看同一张图（GitHub / 支持 mermaid 的编辑器会渲染）：
+
+```mermaid
+flowchart TD
+    A["调用方<br/>浏览器 / curl / 前端页面"] -->|HTTP| B
+    subgraph L1["① 接口层 · cloudfunctions/&lt;fn&gt;/index.js"]
+        B["解析请求 · 校验参数<br/>业务判断 · 组装响应"]
+    end
+    B -->|"dao.xxx(envId, 条件)<br/>只说要什么"| C
+    subgraph L2["② 数据访问层 · shared/db.js（唯一真源）"]
+        C["连库 rdb / 列清单 COLUMNS<br/>查询构造 / pick / toIso / dbError"]
+    end
+    C -.->|"scripts/sync-shared.js<br/>复制到各函数目录 lib/db.js"| C2["lib/db.js 副本 ×5<br/>（勿手改）"]
+    C --> D[("③ PostgreSQL 17.11<br/>schema = public")]
+    style L1 fill:#eef6ff,stroke:#4a90d9
+    style L2 fill:#eefbf2,stroke:#3fa46a
+    style C2 fill:#fff8e6,stroke:#d9a441
+```
+
+### 8.2 两层的职责边界（判断「这段代码该放哪」的尺子）
+
+| 这段代码在做什么 | 放哪层 | 例子 |
+|---|---|---|
+| 读 query / body / header | 接口层 | `event.queryStringParameters.date` |
+| 校验必填、类型、长度、白名单 | 接口层 | 「缺少必填字段 title」`400` |
+| 业务决策（判重、幂等、404、409） | 接口层 | 「已经收藏过了」`409` |
+| 决定返回 `201` 还是 `200` | 接口层 | 幂等命中 → `200` |
+| **连数据库** | **数据访问层** | `rdb({ database: "public" })` |
+| **写查询（表名、列名、`eq`/`order`/`limit`）** | **数据访问层** | `.from("trends").select(COLUMNS.trends)` |
+| **驼峰列兜底读值** | **数据访问层** | `pick(row, "trendId")` |
+| **时间归一成 UTC** | **数据访问层** | `toIso()` |
+| **把数据库错误翻译成中文** | **数据访问层** | `dbError()` |
+
+> 一句话尺子：**涉及「业务规则」的留上面，涉及「表和字段」的沉下去。**
+
+### 8.3 拆分前后对比（同一件事，两种写法）
+
+拆分前（`cloudfunctions/hot/index.js`，Day 18 及以前）：
+
+```js
+const cloudbase = require("@cloudbase/node-sdk");
+const app = cloudbase.init({ env: envId });
+const db = app.rdb({ database: "public" });          // ← 连库写在接口里
+const res = await db.from("trends")                  // ← 表名写在接口里
+  .select('"id","rank","title","heat","platform","url","date","createdAt"')
+  .eq("date", date).eq("platform", platform);        // ← 列名、查询条件都写在接口里
+```
+
+拆分后（现在）：
+
+```js
+const db = require("./lib/db");                      // ← 数据访问层
+const rows = await db.listTrends(envId, { date, platform });  // ← 只说「我要什么」
+```
+
+好处：
+
+| 好处 | 说明 |
+|---|---|
+| 改表只改一处 | 给 `trends` 加一列、改排序规则 → 只动 `shared/db.js` 一个函数 |
+| 列名只写一次 | 驼峰加引号这件事（`COLUMNS`）只有一个地方会写错 |
+| 新接口更快 | 下次加 `/api/topics`，直接 `dao.xxx()`，不用再复制一遍 `rdb` 初始化 |
+| 接口层能读懂 | `index.js` 现在读起来就是业务规则，不再被 SQL 细节打断 |
+| 换库成本低 | 真要换成别的存储，只改 `shared/db.js`，5 个接口一行不动 |
+
+### 8.4 为什么是「复制」而不是 `require("../shared/db")`
+
+| 写法 | 本地 | 云端 | 结论 |
+|---|---|---|---|
+| `require("../shared/db")` | ✅ 能跑 | ❌ `Cannot find module` | 不能用 |
+| `require("./lib/db")`（复制品） | ✅ | ✅ | 采用 |
+
+原因：**CloudBase 云函数按目录整体打包上传**，`cloudfunctions/hot/` 被打包时不会带上兄弟目录 `shared/`，压缩包里没有这个文件，`require` 必然失败。
+所以共享代码只能**物理复制**进每个函数目录 —— 这件事交给 `scripts/sync-shared.js`，避免手抄出错。
+
+> 铁律：**改 `shared/db.js` → 跑 `node scripts/sync-shared.js` → 再 `tcb fn deploy`**，三步不能少一步。
+> 副本头部有「自动生成、不要手改」的标记，手改的内容下次同步就会被冲掉。
+
+### 8.5 全接口回归（Day 19 完成标准之一）
+
+```bash
+node scripts/smoke-test.js
+```
+
+脚本会自动从 `cloudbaserc.json` 读环境 ID，一次跑完 **20 项断言**：`health` / `hot`（条数、倒序、非法日期 400）/ `favorites` GET / POST 写入 / 重复 409 / 缺字段 400 / 热搜不存在 404 / 方法不允许 405 / `sync` 非法来源 400 / 漫剧两接口。
+
+本次结果：
+
+```
+PASS  GET /api/health              service=hot-search-demo
+PASS  GET /api/hot?date=2026-10-06 count=20 ；热度倒序 PASS（首条=12030000）
+PASS  GET /api/hot 日期非法 → 400
+PASS  GET /api/favorites           count=7
+PASS  POST /api/favorites 正常写入  HTTP 201
+PASS  POST /api/favorites 重复 → 409  已经收藏过了
+PASS  POST /api/favorites 缺字段 → 400  缺少必填字段 title
+PASS  POST /api/favorites 热搜不存在 → 404
+PASS  PUT /api/favorites → 405
+PASS  POST /api/sync 来源非法 → 400
+PASS  GET /api/drama/episodes      count=6 ；第 1 集 order=1
+PASS  GET /api/drama/episodes limit 非法 → 400
+PASS  GET /api/drama/watch-logs    count=6
+结果：20 通过 / 0 失败 ✅
+```
+
+> 两个注意点：
+> ① 回归里查 `/api/hot` 必须带 `?date=2026-10-06`。不带参数时接口默认取「今天」，而库里最新数据停在 2026-10-06，会返回 `count=0` —— **这不是回归失败**，是默认日期的问题。
+> ② 回归脚本**故意不触发真实同步**：`trends` 和 `favorites` 之间还挂着 `ON DELETE CASCADE`（Day 18 遗留），跑一次真同步会把收藏全删掉。等 `db/fix_favorites_fk.sql` 执行完再放开。
+
+### 8.6 本节新增的坑
+
+| 事项 | 说明 |
+|---|---|
+| 跨目录 `require` | 云端按目录打包，`require("../shared/db")` 必挂 → 必须复制成 `lib/db.js` |
+| 副本会被覆盖 | `lib/db.js` 由脚本生成，手改无效；改完 `shared/db.js` 一定要跑同步脚本再部署 |
+| `health` 不参与 | 它是纯探针、不连库，所以同步脚本的 `TARGETS` 里没有它；以后新函数要连库，记得加进 `TARGETS` |
+| 重构 ≠ 改契约 | 本次只挪代码，**接口路径、字段名、错误文案一个字没动**，所以前端不用改 |
+| 部署要带 `--force` | 只改了依赖文件（`lib/db.js`）时，不带 `--force` 可能不重新打包 |

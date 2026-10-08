@@ -50,15 +50,9 @@
 
 "use strict";
 
-const cloudbase = require("@cloudbase/node-sdk");
-
-let dbClient = null;
-function getDb(envId) {
-  if (!dbClient) {
-    dbClient = cloudbase.init({ env: envId }).rdb({ database: "public" });
-  }
-  return dbClient;
-}
+// 数据访问层（Day 19 重构）：连库、写查询都在 shared/db.js（复制到 lib/db.js）。
+// 本文件只留：上游取数（HTTP）、字段映射、判重决策（业务）、节流策略。
+const dao = require("./lib/db");
 
 // 桌面 UA：三个源都必需（B站缺它直接 412）
 const DESKTOP_UA =
@@ -224,19 +218,12 @@ async function fetchSource(key) {
  * 应用层 upsert（判重键：platform + title + date，等价于附录 F 的唯一索引约束）。
  * 返回 { inserted, updated, skipped }。
  */
-async function upsert(db, platform, date, items) {
-  // ① 参数化查当天该平台已有行（SDK 构造器，无 SQL 字符串拼接）
-  const existRes = await db
-    .from("trends")
-    .select('"id","title","rank"')
-    .eq("platform", platform)
-    .eq("date", date);
-  if (existRes.error) {
-    throw new Error("查询已有数据失败：" + (existRes.error.message || "数据库返回了错误"));
-  }
+async function upsert(envId, platform, date, items) {
+  // ① 取当天该平台已有行（查询在数据访问层，参数化，无 SQL 字符串拼接）
+  const existing = await dao.findTrendsByPlatformDate(envId, platform, date);
 
   const byTitle = {};
-  (Array.isArray(existRes.data) ? existRes.data : []).forEach(function (r) {
+  existing.forEach(function (r) {
     byTitle[r.title] = r;
   });
 
@@ -248,15 +235,16 @@ async function upsert(db, platform, date, items) {
     const hit = byTitle[it.title];
     if (hit) {
       // ② 命中标题 → 只更新热度/名次/链接，主键与入库时间不动
-      const up = await db
-        .from("trends")
-        .update({ rank: it.rank, heat: it.heat, url: it.url })
-        .eq("id", hit.id);
-      if (up.error) skipped++;
+      const up = await dao.updateTrend(envId, hit.id, {
+        rank: it.rank,
+        heat: it.heat,
+        url: it.url,
+      });
+      if (!up.ok) skipped++;
       else updated++;
     } else {
       // ③ 未命中 → 插入
-      const ins = await db.from("trends").insert({
+      const ins = await dao.insertTrend(envId, {
         id: platform + "-" + it.rank,
         platform: platform,
         rank: it.rank,
@@ -265,7 +253,7 @@ async function upsert(db, platform, date, items) {
         url: it.url,
         date: date,
       });
-      if (ins.error) {
+      if (!ins.ok) {
         // 主键撞车（跨天存在相同 platform-rank）时跳过，不让整批失败
         skipped++;
       } else {
@@ -278,21 +266,8 @@ async function upsert(db, platform, date, items) {
   return { inserted: inserted, updated: updated, skipped: skipped };
 }
 
-// 60 秒节流用的查询：取该平台当天最近一次入库时间
-async function lastSyncAt(db, platform, date) {
-  const res = await db
-    .from("trends")
-    .select('"createdAt"')
-    .eq("platform", platform)
-    .eq("date", date);
-  if (res.error || !Array.isArray(res.data) || !res.data.length) return null;
-  let latest = null;
-  res.data.forEach(function (r) {
-    const t = r.createdAt ? Date.parse(r.createdAt) : NaN;
-    if (!Number.isNaN(t) && (latest === null || t > latest)) latest = t;
-  });
-  return latest;
-}
+// 60 秒节流用的「该平台当天最近一次入库时间」——查询本身在数据访问层
+// （dao.latestTrendCreatedAt），这里直接用它做「要不要打上游」的业务判断。
 
 /**
  * 云函数入口。
@@ -334,7 +309,6 @@ exports.main = async (event, context) => {
 
   const force = body.force === true || body.force === 1 || body.force === "1";
 
-  const db = getDb(envId);
   const detail = [];
 
   for (const source of sources) {
@@ -342,7 +316,7 @@ exports.main = async (event, context) => {
 
     // ---- 频率自我保护：同一平台 60 秒内不重复打上游 ----
     if (!force) {
-      const last = await lastSyncAt(db, source, date);
+      const last = await dao.latestTrendCreatedAt(envId, source, date);
       if (last && Date.now() - last < 60 * 1000) {
         detail.push({
           source: source,
@@ -355,7 +329,7 @@ exports.main = async (event, context) => {
 
     try {
       const items = await fetchSource(source);
-      const saved = await upsert(db, source, date, items);
+      const saved = await upsert(envId, source, date, items);
       detail.push(
         Object.assign({ source: source, name: cfg.name, status: "ok", fetched: items.length }, saved)
       );

@@ -37,20 +37,15 @@
 // 三、连库姿势（本项目踩过坑，别改）
 //    app.rdb({ database: "public" }) —— database 参数其实是 PostgreSQL 的 **schema 名**，
 //    不传时默认取 envId，而 envId 不是合法 schema → 上游报 Invalid schema → 接口 500。
+//    ⚠️ Day 19：这句已经搬到 shared/db.js，本文件不再自己连库。
+//       要改数据库操作 → 改 shared/db.js → node scripts/sync-shared.js → tcb fn deploy。
 // ============================================================
 
 "use strict";
 
-const cloudbase = require("@cloudbase/node-sdk");
-
-// 数据库客户端做模块级缓存：云函数实例复用时不必每次重新 init。
-let dbClient = null;
-function getDb(envId) {
-  if (!dbClient) {
-    dbClient = cloudbase.init({ env: envId }).rdb({ database: "public" });
-  }
-  return dbClient;
-}
+// 数据访问层（Day 19 重构）：连库、写查询这些事全部搬到了 shared/db.js，
+// 由 scripts/sync-shared.js 复制到本目录的 lib/db.js。这里只管「要什么数据」。
+const db = require("./lib/db");
 
 // 统一响应：失败时 error 一律是「人能看懂的中文说明」（字符串）
 function ok(payload) {
@@ -150,19 +145,8 @@ exports.main = async (event, context) => {
     Number.isInteger(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 100) : 20;
 
   try {
-    // ---- 2. 参数化查询（构造器写法，不拼 SQL 字符串）----
-    let q = getDb(envId)
-      .from("trends")
-      .select('"id","rank","title","heat","platform","url","date","createdAt"')
-      .eq("date", date);
-    if (platform) q = q.eq("platform", platform);
-
-    const res = await q;
-    if (res.error) {
-      return fail(500, "读取热搜数据失败：" + (res.error.message || "数据库返回了错误"));
-    }
-
-    const rows = Array.isArray(res.data) ? res.data : [];
+    // ---- 2. 取数据：查询本身在数据访问层，这里只传筛选条件 ----
+    const rows = await db.listTrends(envId, { date: date, platform: platform });
 
     // ---- 3. 按热度倒序（数值比较），同热度时按名次升序，保证结果稳定可复现 ----
     const sorted = rows

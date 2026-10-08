@@ -1,9 +1,10 @@
 // cloudfunctions/favorites/index.js
-// Day 17 · GET  /api/favorites  —— 读收藏列表（已实现）
-// Day 18 · POST /api/favorites  —— 新增收藏（今天的主角：第一个写入接口）
+// Day 17 · GET  /api/favorites  —— 读收藏列表
+// Day 18 · POST /api/favorites  —— 新增收藏（第一个写入接口）
+// Day 19 · 重构：把「连库 + 查库」搬到 shared/db.js，本文件只留参数校验与业务判断
 //
 // ============================================================
-// 一、对外契约（完整版见仓库根目录 api-contract.md §3.5 / §3.7）
+// 一、对外契约（完整版见仓库根目录 api-contract.md §3.5 / §3.7）★重构不改契约★
 //
 //   GET  /api/favorites?limit=N
 //     成功 200：{ "ok": true,  "data": [ {id,trendId,title,platform,note,createdAt,updatedAt}, ... ], "count": N }
@@ -19,42 +20,27 @@
 // ============================================================
 //
 // ============================================================
-// 二、今天防的是哪两种「重复提交 / 错误输入」（核心题答案）
+// 二、分层之后，这个文件还剩什么（Day 19 的重点）
 //
-// ① 业务上的重复：同一条热搜收藏两次
-//    判重键 = favorites."trendId"（一条热搜只能有一条收藏，跟前端 store.js 的收藏键语义一致）。
-//    先查后插 → 命中就返回 409 + 中文「已经收藏过了」，库里不会出现两行指向同一热搜的记录。
+//   ✅ 留在这里（接口层/业务层）：解析请求体、校验必填与格式、判重决策、幂等策略、拼响应、写日志。
+//   ❌ 搬走了（数据层 shared/db.js）：`cloudbase.init().rdb({database:"public"})`、
+//      `.from("favorites").select(...).eq(...)`、驼峰兜底 `pick`、时间归一化 `toIso`、列清单。
 //
-// ② 手抖连点 / 网络重试：同一个请求被提交两次
-//    客户端可带请求头 Idempotency-Key（或请求体 clientRequestId，二选一）。
-//    服务端把它编进主键：id = "fav-idem-<key>"。
-//    第二次带同一个 key 进来 → 主键已存在 → 直接把第一次那条读出来返回 200，
-//    **既不重复插入，也不报错**（幂等：同样的请求，效果等于只做一次）。
-//    这样连点两下、前端超时自动重试，都不会多出一行脏数据。
-//
-// ③ 顺带挡住的错误输入：body 不是 JSON / 缺字段 / 字段类型不对 / 超长 /
-//    platform 不在白名单 / trendId 在 trends 表里根本不存在（挡住外键报错，给中文 404）。
-// ============================================================
+//   一句话：**这个文件不再出现任何表名和列名**——想知道收藏表长什么样，去 shared/db.js 看。
 //
 // ============================================================
-// 三、连库姿势（本项目踩过坑，别改）
-//    app.rdb({ database: "public" }) —— database 参数其实是 PostgreSQL 的 **schema 名**，
-//    不传时默认取 envId，而 envId 不是合法 schema → 上游报 Invalid schema → 接口 500。
-//    写入同样用 SDK 的构造器（.insert() / .select().eq()），不拼 SQL 字符串，因此没有注入面。
+// 三、防了哪两种「重复提交 / 错误输入」（Day 18 的成果，重构后行为不变）
+//
+// ① 业务重复：同一条热搜收藏两次 → 判重键 favorites."trendId" → 409「已经收藏过了」
+// ② 手抖连点/超时重试：Idempotency-Key 编进主键 id = fav-idem-<key> → 同键再发返回 200 + 同一条，不多一行
+// ③ 错误输入：空 body / 非 JSON / 缺字段（一次列全）/ 类型不对 / 超长 / platform 不在白名单 /
+//    trendId 在 trends 表里不存在（404 中文，不让外键约束抛成看不懂的 500）
 // ============================================================
 
 "use strict";
 
-const cloudbase = require("@cloudbase/node-sdk");
-
-// 数据库客户端做模块级缓存：云函数实例复用时不必每次重新 init。
-let dbClient = null;
-function getDb(envId) {
-  if (!dbClient) {
-    dbClient = cloudbase.init({ env: envId }).rdb({ database: "public" });
-  }
-  return dbClient;
-}
+// 数据访问层（Day 19）：连库、写查询都在 shared/db.js，由 scripts/sync-shared.js 复制到 lib/db.js
+const dao = require("./lib/db");
 
 // ------------------------------------------------------------
 // 常量：输入上限与平台白名单
@@ -136,16 +122,8 @@ function newRequestId() {
 }
 
 // ------------------------------------------------------------
-// 小工具
+// 小工具（纯请求/响应层面的，跟数据库无关，所以留在本文件）
 // ------------------------------------------------------------
-// favorites 表里有三个驼峰列名（trendId / createdAt / updatedAt）。
-// PostgreSQL 会把没加双引号的标识符折叠成小写；稳妥起见读值时两种写法都认，
-// 避免真·驼峰被悄悄改成 trendid 而接口静默返回 undefined（这种失败不报错，最难查）。
-function pick(row, camelKey) {
-  if (row[camelKey] !== undefined && row[camelKey] !== null) return row[camelKey];
-  return row[camelKey.toLowerCase()];
-}
-
 function isNonEmptyString(v) {
   return typeof v === "string" && v.trim().length > 0;
 }
@@ -187,32 +165,21 @@ function parseBody(event) {
   }
 }
 
-// 时间统一序列化成 ISO 8601 **UTC**（形如 2026-10-08T11:51:34.442Z），跟契约 §1.4 一致。
-// 不这么做的话，PostgreSQL 的 TIMESTAMPTZ 会原样吐出 '2026-10-08T19:51:34.442+08:00'
-// （会话时区是 +08），语义等价但格式跟契约示例对不上，前端若按字符串比较/排序就会踩坑。
-function toIso(v) {
-  if (v === null || v === undefined || v === "") return v === undefined ? null : v;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? String(v) : d.toISOString();
-}
-
+// 行 → 契约形状。驼峰兜底读值（dao.pick）与时间统一 UTC（dao.toIso）都来自数据访问层。
 function shape(row) {
   return {
     id: row.id,
-    trendId: pick(row, "trendId"),
+    trendId: dao.pick(row, "trendId"),
     title: row.title,
     platform: row.platform,
     note: row.note == null ? "" : row.note,
-    createdAt: toIso(pick(row, "createdAt")),
-    updatedAt: toIso(pick(row, "updatedAt")),
+    createdAt: dao.toIso(dao.pick(row, "createdAt")),
+    updatedAt: dao.toIso(dao.pick(row, "updatedAt")),
   };
 }
 
-const FAV_COLUMNS =
-  '"id","trendId","title","platform","note","createdAt","updatedAt"';
-
 // ------------------------------------------------------------
-// GET：读收藏列表（Day 17 已实现，逻辑不变，只把失败响应统一成字符串 error）
+// GET：读收藏列表
 // ------------------------------------------------------------
 async function handleGet(envId, query, requestId) {
   const limitRaw = Number(query.limit);
@@ -220,13 +187,8 @@ async function handleGet(envId, query, requestId) {
     Number.isInteger(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 100) : Infinity;
 
   try {
-    const res = await getDb(envId).from("favorites").select(FAV_COLUMNS);
-    if (res.error) {
-      log("db_error_on_read", { requestId: requestId, detail: String(res.error.message || res.error) });
-      return fail(500, "读取收藏列表失败：" + (res.error.message || "数据库返回了错误"), requestId);
-    }
-
-    const rows = (Array.isArray(res.data) ? res.data : []).slice();
+    // 查询在数据访问层；这里只负责排序与截断
+    const rows = (await dao.listFavorites(envId)).slice();
     rows.sort(function (a, b) {
       return String(a.id).localeCompare(String(b.id));
     });
@@ -241,7 +203,7 @@ async function handleGet(envId, query, requestId) {
 }
 
 // ------------------------------------------------------------
-// POST：新增收藏（今天的主任务）
+// POST：新增收藏
 // ------------------------------------------------------------
 async function handlePost(envId, event, requestId) {
   const startedAt = Date.now();
@@ -319,42 +281,34 @@ async function handlePost(envId, event, requestId) {
   }
 
   try {
-    const db = getDb(envId);
-
     // ---- 3. 幂等：同一个 key 已经处理过 → 直接回第一次的结果，不再插一行 ----
     if (idemKey) {
-      const dup = await db.from("favorites").select(FAV_COLUMNS).eq("id", id);
-      if (!dup.error && Array.isArray(dup.data) && dup.data.length > 0) {
+      const dupRow = await dao.findFavoriteById(envId, id);
+      if (dupRow) {
         log("idempotent_hit", { requestId: requestId, id: id, ms: Date.now() - startedAt });
-        return ok(200, { data: shape(dup.data[0]) }, requestId);
+        return ok(200, { data: shape(dupRow) }, requestId);
       }
     }
 
     // ---- 4. 这条热搜真的存在吗？（先查再插，避免外键违规变成一句看不懂的 500）----
-    const trend = await db.from("trends").select('"id","title","platform"').eq("id", trendId);
-    if (trend.error) {
-      return fail(500, "查询热搜失败：" + (trend.error.message || "数据库返回了错误"), requestId);
-    }
-    if (!Array.isArray(trend.data) || trend.data.length === 0) {
+    const trend = await dao.findTrendById(envId, trendId);
+    if (!trend) {
       log("reject_trend_not_found", { requestId: requestId, trendId: trendId });
       return fail(404, "没有找到这条热搜（可能链接已失效）", requestId);
     }
 
     // ---- 5. 业务判重：同一条热搜收藏两次 → 409 ----
-    const existed = await db.from("favorites").select('"id","trendId"').eq("trendId", trendId);
-    if (existed.error) {
-      return fail(500, "查询收藏失败：" + (existed.error.message || "数据库返回了错误"), requestId);
-    }
-    if (Array.isArray(existed.data) && existed.data.length > 0) {
+    const existed = await dao.findFavoriteByTrendId(envId, trendId);
+    if (existed) {
       log("reject_duplicate_favorite", {
         requestId: requestId,
         trendId: trendId,
-        existedId: existed.data[0].id,
+        existedId: existed.id,
       });
       return fail(409, "已经收藏过了", requestId);
     }
 
-    // ---- 6. 写入（构造器写法，不拼 SQL 字符串）----
+    // ---- 6. 写入（参数化，不拼 SQL 字符串）----
     const now = new Date().toISOString();
     const row = {
       id: id,
@@ -365,15 +319,15 @@ async function handlePost(envId, event, requestId) {
       createdAt: now,
       updatedAt: now,
     };
-    const ins = await db.from("favorites").insert(row);
-    if (ins.error) {
-      const msg = String(ins.error.message || ins.error);
+    const ins = await dao.insertFavorite(envId, row);
+    if (!ins.ok) {
+      const msg = String((ins.error && ins.error.message) || ins.error);
       // 并发下两个同 key 请求同时插 → 后到的会撞主键；这不是错误，按幂等处理
       if (idemKey && /duplicate|unique|already exists|conflict/i.test(msg)) {
-        const dup = await db.from("favorites").select(FAV_COLUMNS).eq("id", id);
-        if (!dup.error && Array.isArray(dup.data) && dup.data.length > 0) {
+        const dupRow = await dao.findFavoriteById(envId, id);
+        if (dupRow) {
           log("idempotent_race_hit", { requestId: requestId, id: id, ms: Date.now() - startedAt });
-          return ok(200, { data: shape(dup.data[0]) }, requestId);
+          return ok(200, { data: shape(dupRow) }, requestId);
         }
       }
       log("insert_failed", { requestId: requestId, detail: msg });
@@ -381,8 +335,8 @@ async function handlePost(envId, event, requestId) {
     }
 
     // ---- 7. 写回读一遍：既保证返回的就是库里的真实值，也顺手验证「真的写进去了」----
-    const back = await db.from("favorites").select(FAV_COLUMNS).eq("id", id);
-    if (back.error || !Array.isArray(back.data) || back.data.length === 0) {
+    const back = await dao.findFavoriteById(envId, id);
+    if (!back) {
       log("insert_but_readback_empty", { requestId: requestId, id: id });
       return fail(500, "收藏写入后读不回来，请稍后重试", requestId);
     }
@@ -395,7 +349,7 @@ async function handlePost(envId, event, requestId) {
       noteLen: note.length,
       ms: Date.now() - startedAt,
     });
-    return ok(201, { data: shape(back.data[0]) }, requestId);
+    return ok(201, { data: shape(back) }, requestId);
   } catch (err) {
     log("post_throw", { requestId: requestId, detail: String((err && err.message) || err) });
     return fail(500, "收藏失败：" + String((err && err.message) || err), requestId);

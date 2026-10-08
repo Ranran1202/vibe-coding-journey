@@ -23,16 +23,8 @@
 
 "use strict";
 
-const cloudbase = require("@cloudbase/node-sdk");
-
-let dbClient = null;
-function getDb(envId) {
-  if (!dbClient) {
-    // database 参数其实是 PostgreSQL 的 **schema 名**，不传默认取 envId → Invalid schema → 500
-    dbClient = cloudbase.init({ env: envId }).rdb({ database: "public" });
-  }
-  return dbClient;
-}
+// 数据访问层（Day 19 重构）：连库、写查询、cast 归一化都在 shared/db.js（复制到 lib/db.js）
+const dao = require("./lib/db");
 
 // 统一响应：三个键恒定出现（ok / data / error），与契约 §1.2 完全一致
 function reply(statusCode, payload) {
@@ -73,47 +65,8 @@ exports.main = async (event, context) => {
   }
 
   try {
-    // ---- 参数化查询（构造器写法，无 SQL 字符串拼接）----
-    let q = getDb(envId)
-      .from("drama_episodes")
-      .select('"id","order","title","status","duration","durationSec","summary","scene","videoUrl","cast","updatedAt"');
-
-    if (status) q = q.eq("status", status);
-    q = q.order("order", { ascending: true }); // 按第几集升序
-
-    const res = await q;
-    if (res.error) {
-      return fail(500, "读取剧集数据失败：" + (res.error.message || "数据库返回了错误"));
-    }
-
-    let rows = Array.isArray(res.data) ? res.data : [];
-
-    // cast 在库里是 JSONB，正常情况下 SDK 直接给数组；
-    // 万一网关把它序列化成字符串，这里兜一下，避免前端拿到 "[object Object]" 或字符串。
-    const data = rows.map(function (r) {
-      let cast = r.cast;
-      if (typeof cast === "string") {
-        try {
-          cast = JSON.parse(cast);
-        } catch (e) {
-          cast = [];
-        }
-      }
-      return {
-        id: r.id,
-        order: r.order,
-        title: r.title,
-        status: r.status,
-        duration: r.duration == null ? "" : r.duration,
-        durationSec: r.durationSec == null ? 0 : r.durationSec,
-        summary: r.summary == null ? "" : r.summary,
-        scene: r.scene == null ? "" : r.scene,
-        videoUrl: r.videoUrl == null ? "" : r.videoUrl,
-        cast: Array.isArray(cast) ? cast : [],
-        updatedAt: r.updatedAt,
-      };
-    });
-
+    // 查询、按集数排序、cast 归一化都在数据访问层，这里只按契约截断条数
+    const data = await dao.listEpisodes(envId, { status: status });
     return ok(limit ? data.slice(0, limit) : data);
   } catch (err) {
     return fail(500, "读取剧集数据失败：" + String((err && err.message) || err));

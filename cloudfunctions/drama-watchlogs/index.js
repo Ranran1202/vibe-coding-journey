@@ -14,15 +14,8 @@
 
 "use strict";
 
-const cloudbase = require("@cloudbase/node-sdk");
-
-let dbClient = null;
-function getDb(envId) {
-  if (!dbClient) {
-    dbClient = cloudbase.init({ env: envId }).rdb({ database: "public" });
-  }
-  return dbClient;
-}
+// 数据访问层（Day 19 重构）：连库、写查询、驼峰列兜底都在 shared/db.js（复制到 lib/db.js）
+const dao = require("./lib/db");
 
 function reply(statusCode, payload) {
   return {
@@ -62,41 +55,11 @@ exports.main = async (event, context) => {
   }
 
   try {
-    let q = getDb(envId)
-      .from("drama_watch_logs")
-      .select('"id","episodeId","viewer","progress","device","watchedAt"');
-
-    if (episodeId) q = q.eq("episodeId", episodeId); // 参数化筛选
-    if (viewer) q = q.eq("viewer", viewer);
-
-    // 按观看时间倒序：最近的一次排最前 —— 「回看过去」的入口
-    q = q.order("watchedAt", { ascending: false });
-
-    const res = await q;
-    if (res.error) {
-      return fail(500, "读取观看记录失败：" + (res.error.message || "数据库返回了错误"));
-    }
-
-    const rows = Array.isArray(res.data) ? res.data : [];
-
-    // 驼峰列兜底：万一网关把 episodeId 折叠成 episodeid，这里同时认两种写法，
-    // 避免字段静默变成 undefined（这种失败不报错，最容易被当成「接口没问题」）。
-    function pick(row, camelKey) {
-      if (row[camelKey] !== undefined && row[camelKey] !== null) return row[camelKey];
-      return row[camelKey.toLowerCase()];
-    }
-
-    const data = rows.map(function (r) {
-      return {
-        id: r.id,
-        episodeId: pick(r, "episodeId"),
-        viewer: r.viewer == null ? "" : r.viewer,
-        progress: r.progress == null ? 0 : r.progress,
-        device: r.device == null ? "" : r.device,
-        watchedAt: pick(r, "watchedAt"),
-      };
+    // 查询、按观看时间倒序、驼峰列兜底都在数据访问层，这里只按契约截断条数
+    const data = await dao.listWatchLogs(envId, {
+      episodeId: episodeId,
+      viewer: viewer,
     });
-
     return ok(limit ? data.slice(0, limit) : data);
   } catch (err) {
     return fail(500, "读取观看记录失败：" + String((err && err.message) || err));

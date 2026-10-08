@@ -1,4 +1,4 @@
-# 云函数部署与验证手册（Day 17）
+# 云函数部署与验证手册（Day 17 起 · Day 18 增补写入接口）
 
 本仓库有**两条独立的业务线**，表与接口各自隔离，共用同一个 CloudBase 环境：
 
@@ -7,7 +7,7 @@
 | 今日热搜 | `my-app/` | 根目录 `api-contract.md` | `/api/hot`、`/api/favorites`、`/api/sync` |
 | AI 漫剧 | `ai-drama/` | `ai-drama/api-contract.md` | `/api/drama/episodes`、`/api/drama/watch-logs` |
 
-本文第 1–5 节是**今日热搜线**，第 6 节是 **AI 漫剧线**。
+本文第 1–5 节是**今日热搜线**，第 6 节是 **AI 漫剧线**，第 7 节是 **Day 18 的写入接口（POST /api/favorites）**。
 另有 `health`（GET /api/health，两条线共用）作为健康检查探针。
 
 > 命令里的环境 ID **不写死**，一律从本地 `cloudbaserc.json` 读取：
@@ -399,3 +399,110 @@ tcb db execute -e "$ENV" --sql 'UPDATE "drama_episodes" SET "status" = '"'"'剧�
 ```
 
 > 也可以在 CloudBase 控制台 → 数据库 → `drama_episodes` 表里直接改一行，效果相同。
+
+---
+
+## 7. Day 18 ｜`POST /api/favorites`（新增收藏 · 写入接口）
+
+> 实现在 `cloudfunctions/favorites/index.js`，跟 `GET /api/favorites` **共用一个云函数**（按 `method` 分发），路由 **不需要** 新建 —— `/api/favorites` 这条路由 Day 17 已建，POST 自动走它。
+> 契约见根目录 `api-contract.md` §3.7。
+
+### 7.1 这个接口防了哪两种「重复提交 / 错误输入」（今日核心题）
+
+| 类型 | 防法 | 表现 |
+|---|---|---|
+| **业务重复**：同一条热搜收藏两次 | 判重键 = `favorites."trendId"`，先查后插 | `409` + 「已经收藏过了」，库里不会有两行指向同一条热搜 |
+| **手抖连点 / 网络超时重试** | 请求头 `Idempotency-Key`（或请求体 `clientRequestId`）被编进主键 `id = fav-idem-<key>` | 同一个 key 再发 → `200` + 返回**同一条**数据，**不多一行** |
+
+顺带挡住的错误输入：空 body / 非 JSON / 缺必填字段（一次列全）/ 字段类型不对 / 超长（title、note ≤ 200，trendId ≤ 100）/ `platform` 不在白名单 / `trendId` 在 `trends` 表里不存在（先查再插 → `404` 中文提示，不让外键约束抛成看不懂的 500）。
+
+### 7.2 部署
+
+```bash
+tcb fn deploy favorites -e "$ENV" --force
+```
+
+> 路由已存在（Day 17 建的 `/api/favorites`），**不用** 再 `tcb service create`。
+> 不确定就 `tcb service list` 看一眼。
+
+### 7.3 命令行验证六连（curl，每条都能直接粘贴）
+
+```bash
+curl -s -m 40 -w "\n[HTTP %{http_code}]\n" -X POST "https://$ENV.service.tcloudbase.com/api/favorites" -H "Content-Type: application/json" -H "Idempotency-Key: my-test-001" -d '{"trendId":"weibo-2","title":"诺贝尔物理学奖","platform":"weibo","note":"Day 18 写入"}'
+```
+
+```bash
+curl -s -m 40 -w "\n[HTTP %{http_code}]\n" -X POST "https://$ENV.service.tcloudbase.com/api/favorites" -H "Content-Type: application/json" -H "Idempotency-Key: my-test-001" -d '{"trendId":"weibo-2","title":"诺贝尔物理学奖","platform":"weibo","note":"Day 18 写入"}'
+```
+
+```bash
+curl -s -m 40 -w "\n[HTTP %{http_code}]\n" -X POST "https://$ENV.service.tcloudbase.com/api/favorites" -H "Content-Type: application/json" -d '{"trendId":"weibo-2","title":"诺贝尔物理学奖","platform":"weibo"}'
+```
+
+```bash
+curl -s -m 40 -w "\n[HTTP %{http_code}]\n" -X POST "https://$ENV.service.tcloudbase.com/api/favorites" -H "Content-Type: application/json" -d '{"trendId":"weibo-3","platform":"weibo"}'
+```
+
+```bash
+curl -s -m 40 -w "\n[HTTP %{http_code}]\n" -X POST "https://$ENV.service.tcloudbase.com/api/favorites" -H "Content-Type: application/json" -d '{"trendId":"weibo-9999","title":"不存在的热搜","platform":"weibo"}'
+```
+
+```bash
+curl -s -m 40 -w "\n[HTTP %{http_code}]\n" -X POST "https://$ENV.service.tcloudbase.com/api/favorites" -H "Content-Type: application/json" -d '{"trendId":"weibo-3","title":"国庆假期返程天气指南","platform":"zhihu"}'
+```
+
+期望依次是：`201`（成功，`data` 是收藏对象）→ `200`（同一个幂等键，返回同一条）→ `409`「已经收藏过了」→ `400`「缺少必填字段 title」→ `404`「没有找到这条热搜（可能链接已失效）」→ `400`「platform 只支持：weibo / baidu / douyin / bilibili」。
+
+> `trendId` 要选 `trends` 表里**真实存在**的 id（形如 `weibo-2`）。
+> 查当前可用 id：`tcb db execute -e "$ENV" --sql 'SELECT "id","title","platform" FROM trends WHERE "date" = '"'"'2026-10-06'"'"' ORDER BY "platform","rank" LIMIT 10' < /dev/null`
+
+### 7.4 浏览器验证（交截图用）
+
+打开本地页面（**未入库**，只在 `tmp/`）：
+
+```
+C:\Users\86153\WorkBuddy\vibe-coding-journey\tmp\day18-post-verify.html
+```
+
+- 填一次接口地址（页面会记住），然后：
+  - 「发送 POST」→ 期望 **HTTP 201** + `data` 是收藏对象（**第一张截图**：含返回的 JSON 形状）；
+  - 「场景：同键重复提交」→ 期望 **HTTP 200** + 同一条数据；
+  - 「场景：缺 title」→ 期望 **HTTP 400** + 中文提示；
+  - 「读回核对」→ 收藏列表里出现刚写的那条。
+- 一键批量跑 + 自动截图：
+
+```bash
+"C:/Users/86153/.workbuddy/binaries/node/versions/22.22.2-3/node.exe" tmp/day18-browser-verify.js
+```
+
+  截图输出在 `C:\Users\86153\WorkBuddy\day18-shots\`（在仓库外面，不会误提交）。
+
+### 7.5 数据库核对（**第二张截图**：表里新增的那一行）
+
+```bash
+tcb db execute -e "$ENV" --sql 'SELECT "id","trendId","title","platform","note","createdAt" FROM favorites ORDER BY "id"' < /dev/null
+```
+
+- 幂等重复提交后行数**不增加**（这是「防重复提交」的实锤：请求发了两次，表里只有一行）。
+- 想清掉验证写入的行（`id` 以 `fav-idem-` 开头的就是）：
+
+```bash
+tcb db execute -e "$ENV" --sql 'DELETE FROM favorites WHERE "id" LIKE '"'"'fav-idem-%'"'"'' < /dev/null
+```
+
+### 7.6 服务端日志怎么看（Day 18 余力加练）
+
+- 日志格式：**一行一个 JSON**，带 `ts` / `msg` / `fn` / `requestId`，以及定位所需字段（`id`、`trendId`、`platform`、耗时 `ms` 等）；**备注只记长度不记内容**，不存隐私。
+- 每次响应都带 `X-Request-Id` 响应头，用它在日志里把同一次请求串起来。
+- 查看位置：**CloudBase 控制台 → 云函数 → `favorites` → 日志**。
+  ⚠️ CLI 的 `tcb fn log favorites` 在当前环境会报 `topic not exist`（这个环境的 CLS 日志服务没开通，Day 17 已确认过），**只能去控制台看**。
+- 想造一条日志：`curl` 发一次 POST（或 405/400 也行），几秒后控制台里就能看到 `post_in` / `created`（或 `reject_*`）这几条。
+
+### 7.7 本节新增的坑与决策
+
+| 事项 | 说明 |
+|---|---|
+| CORS | favorites 上**已开放** `Access-Control-Allow-Origin: *` + `OPTIONS` 预检（Day 18 为浏览器验证 POST 而加，契约 §1.4 已更新）；加登录态后要收窄 |
+| 时间格式 | PostgreSQL 的 `TIMESTAMPTZ` 会按会话时区吐 `2026-10-08T19:51:34.442+08:00`；接口已在应用层统一转成 UTC `...Z`（契约 §1.4） |
+| 级联删除 | Day 17 遗留的 `ON DELETE CASCADE` 问题已定**方案 b（去外键）**，脚本 `db/fix_favorites_fk.sql` **写好未执行**（改表要等确认）；写入接口已用「先查 trends 再插」绕开外键报错 |
+| `Idempotency-Key` 格式 | 只允许 `[A-Za-z0-9_-]` 且 ≤ 64 字符（因为它要进主键），不合法直接 `400` |

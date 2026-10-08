@@ -15,8 +15,8 @@
 | 前端 | `my-app` —— **原生 JS 静态站**（`index.html` + `js/*.js`，**无构建步骤**），托管于 CloudBase 静态网站托管 |
 | 后端 | 腾讯云 CloudBase（云开发）· 普通云函数 + HTTP 访问服务 |
 | 数据库 | CloudBase **PostgreSQL 17.11**（真 SQL）。**2026-10-05（Day 16）已建表**。脚本：`db/schema.sql`（建表）、`db/seed.sql`（补种子·幂等）、`db/reset.sql`（重置·先删后建）；执行与验证步骤见 `db/README.md` |
-| 契约版本 | **v0.7.0** |
-| 最后更新 | 2026-10-06 |
+| 契约版本 | **v0.8.0** |
+| 最后更新 | 2026-10-08 |
 | 推导依据 | `my-app/index.html` 的 4 个视图 + `js/app.js` 的数据加载逻辑 + `js/data.js` / `js/config.js` / `js/store.js` 的数据结构 |
 | 关联文档 | `TECH_DESIGN.md`（§4 数据模型、§5 API、§6.2 Phase 2 数据流） |
 
@@ -82,8 +82,12 @@
 
 - **编码 / 格式**：UTF-8；请求与响应体均为 JSON（`Content-Type: application/json`）。
 - **时间**：ISO 8601，UTC，例：`2026-10-04T07:47:10.946Z`。
+  （列是 `TIMESTAMPTZ`，数据库按会话时区会吐出 `2026-10-08T19:51:34.442+08:00` 这种带偏移的写法，
+  语义等价但格式不统一；**写入接口已在应用层统一转成 `...Z`**，读接口后续一并收敛。）
 - **认证**：当前无用户系统，**接口暂不需要鉴权**；后续加登录时在本节补充。
-- **跨域（CORS）**：**暂不配置**（今天只验证「公网能直接打开返回 JSON」），由后续 Day 处理。
+- **跨域（CORS）**：`GET/POST /api/favorites` **已开放**（`Access-Control-Allow-Origin: *`，允许 `Idempotency-Key` 头，并响应 `OPTIONS` 预检）——
+  Day 18 为了能在浏览器里直接验证写入而开；其余接口仍**暂不配置**，由后续 Day 处理。
+  ⚠️ 将来加登录态后要收窄成只允许自己的站点域名（当前无用户系统、数据不敏感，`*` 可接受）。
 - **分页**：暂不需要（数据量小）；接入真实数据源后如有需要，在对应接口补 `page` / `pageSize`。
 - **数据来源**：只从**免费公开来源**取数，**绝不自建爬虫**。
 
@@ -176,7 +180,7 @@
 | 表 | 读 | 写 |
 |---|---|---|
 | `trends` | `GET /api/platforms`、`GET /api/hot`、`GET /api/hot/:id` | `POST /api/sync`（从公开源写入） |
-| `favorites` | `GET /api/favorites` | `POST /api/favorites`、`PATCH /api/favorites/:id`、`DELETE /api/favorites/:id` |
+| `favorites` | `GET /api/favorites` ✅ | `POST /api/favorites` ✅（Day 18）、`PATCH /api/favorites/:id` 📝、`DELETE /api/favorites/:id` 📝 |
 
 ---
 
@@ -390,7 +394,11 @@
 超出上限或非正整数时**不报错**，按「不限条数」处理；`limit=1000` 会被夹到 100。
 （`GET /api/hot` 的 `limit` 同理。）
 
-**错误返回**：`500 INTERNAL_ERROR`。
+**错误返回**（`error` 为**中文字符串**，见 §1.2）
+
+| 场景 | HTTP | body |
+|---|---|---|
+| 服务端错误 | `500` | `{ "ok": false, "error": "读取收藏列表失败：……" }` |
 
 ---
 
@@ -430,9 +438,16 @@
 >
 > 这就是「接口返回的数据里，哪一项和你建的表对不上」的实例：
 > `GET /api/favorites` 的 `count`（3）与建表时的 5 条对不上。
-> 候选修法（Day 18 定）：a) 外键改 `ON DELETE RESTRICT` + 同步时先改写收藏指向；
-> b) 收藏表去掉外键、靠应用层维护（`title` 本来就是冗余快照，条目没了也能显示）。
-> 今天不改表结构（任务清单明确「今日不做」），先记录。
+> **Day 18 决策（2026-10-08）：选方案 b —— 去掉外键，靠应用层维护。**
+>
+> 选它的理由：`favorites` 本来就**冗余存了 `title` / `platform`**（见 §2.2），
+> 原热搜下架后收藏列表照样能显示，「不留孤儿」的收益抵不过「收藏被静默删掉」的代价。
+> 方案 a（`ON DELETE RESTRICT`）会让同步在删旧数据时**直接整批失败**，比现在更糟，故不选。
+>
+> 改表脚本已写好在 **`db/fix_favorites_fk.sql`**（`DROP CONSTRAINT` 一条，**可重复执行**），
+> **尚未执行** —— 改表属结构变更，需要你点头再跑。执行后：
+> 同步删热搜不再连带删收藏；「这条热搜还在吗」由 `POST /api/favorites` 的 `trends` 存在性校验负责（不存在 → `404` 中文提示）。
+> 今日（Day 18）主任务是写入接口，表结构保持原样，接口已能正常工作。
 
 **请求**
 
@@ -474,9 +489,11 @@
 
 ---
 
-### 3.7 `POST /api/favorites` —— 新增收藏 📝 占位
+### 3.7 `POST /api/favorites` —— 新增收藏 ✅ 已实现
 
 **用途**：把一条热搜加入收藏（对应列表/详情页的「☆ 收藏」按钮）。
+
+**实现**：`cloudfunctions/favorites/index.js`（与 §3.5 的 GET 共用一个云函数，按 `method` 分发）
 
 **请求**
 
@@ -485,25 +502,55 @@
 | 方法 | `POST` |
 | 路径 | `/api/favorites` |
 | 请求体 | `{ "trendId": "weibo-1", "title": "示例标题", "platform": "weibo", "note": "" }` |
+| 可选请求头 | `Idempotency-Key: <客户端生成的唯一串>`（防手抖连点 / 超时重试，见下方「幂等」） |
 
-- 必填：`trendId`、`title`、`platform`；`note` 可选（默认空字符串）。
+- 必填：`trendId`、`title`、`platform`（三者都必须是**非空字符串**）；`note` 可选（默认空字符串）。
+- 长度上限：`trendId` ≤ 100、`title` ≤ 200、`note` ≤ 200。
+- `platform` 只认白名单 `weibo` / `baidu` / `douyin` / `bilibili`。
+- 幂等键（请求头 `Idempotency-Key`，或请求体 `clientRequestId`，二选一）只允许字母、数字、`_`、`-`，最长 64 字符。
 
 **成功响应**（HTTP `201`）
 
 ```json
 {
   "ok": true,
-  "data": { "id": "fav-1", "trendId": "weibo-1", "title": "示例标题", "platform": "weibo", "note": "", "createdAt": "2026-10-04T07:47:10.946Z", "updatedAt": "2026-10-04T07:47:10.946Z" }
+  "data": { "id": "fav-mjl2x9k-a3f1", "trendId": "weibo-2", "title": "诺贝尔物理学奖", "platform": "weibo", "note": "", "createdAt": "2026-10-08T11:43:02.123Z", "updatedAt": "2026-10-08T11:43:02.123Z" }
 }
 ```
 
-**错误返回**
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `data.id` | string | 本次生成的收藏记录 id。带幂等键时为 `fav-idem-<key>`，否则为 `fav-<时间戳>-<随机>` |
+| 其余字段 | — | 与 §3.5 `GET /api/favorites` 的行结构**完全一致**（读回即写回，可直接对比） |
+
+**幂等（防重复提交）**
+
+带同一个 `Idempotency-Key` 的第二次请求 → HTTP `200` + **同一个 `data`**，库里**不会多一行**。
+（幂等键被编进主键 `id = fav-idem-<key>`，第二次命中直接回读；并发撞主键时也按同一路径处理。）
+
+**错误返回**（`error` 为**中文字符串**，见 §1.2）
 
 | 场景 | HTTP | body |
 |---|---|---|
-| 缺必填字段 | `400` | `{ "ok": false, "error": { "code": "BAD_REQUEST", "message": "缺少必填字段 trendId" } }` |
-| 重复收藏同一条 | `409` | `{ "ok": false, "error": { "code": "CONFLICT", "message": "已经收藏过了" } }` |
-| 服务端错误 | `500` | `{ "ok": false, "error": { "code": "INTERNAL_ERROR", "message": "收藏失败" } }` |
+| 请求体为空 / 不是合法 JSON | `400` | `{ "ok": false, "error": "请求体不能为空，请传 JSON，例如 {\"trendId\":\"weibo-1\",...}" }` |
+| 缺必填字段 | `400` | `{ "ok": false, "error": "缺少必填字段 trendId、title" }`（缺几个列几个） |
+| 字段类型不对 | `400` | `{ "ok": false, "error": "trendId 必须是字符串" }` |
+| 字段超长 | `400` | `{ "ok": false, "error": "title 太长，最多 200 个字符" }` |
+| `platform` 不在白名单 | `400` | `{ "ok": false, "error": "platform 只支持：weibo / baidu / douyin / bilibili" }` |
+| 幂等键格式不对 | `400` | `{ "ok": false, "error": "Idempotency-Key 只能包含字母、数字、下划线和连字符，且不超过 64 个字符" }` |
+| `trendId` 在 `trends` 表里不存在 | `404` | `{ "ok": false, "error": "没有找到这条热搜（可能链接已失效）" }` |
+| 重复收藏同一条 | `409` | `{ "ok": false, "error": "已经收藏过了" }` |
+| 方法不是 GET/POST | `405` | `{ "ok": false, "error": "只支持 GET 和 POST 两种方法" }` |
+| 服务端错误 | `500` | `{ "ok": false, "error": "收藏失败：……" }` |
+
+> ✅ **2026-10-08（Day 18）实现记录**
+> - 判重键 = `favorites."trendId"`：一条热搜只允许一条收藏，重复 → `409`。
+>   先查后插，空窗口内并发的可能极小；若将来要求强一致，再加唯一索引（见 §3.6 的改表脚本）。
+> - **写入后立刻回读一遍**（`SELECT ... WHERE id = ?`）再返回：既保证 `createdAt` 是库里的真实值，
+>   也顺手做了「写入 + 读回」自检；读不回来就报 `500`，不返回「看起来成功」的假象。
+> - `trendId` 会先查 `trends` 表：不存在就 `404` 中文提示，**不让外键约束抛成看不懂的 500**。
+> - 服务端日志（余力加练）：一行一个 JSON，带 `requestId`，同时放进响应头 `X-Request-Id`；
+>   只记定位所需字段，**备注只记长度不记内容**。查问题时用 requestId 把同一次请求串起来。
 
 ---
 
@@ -595,6 +642,7 @@
 | v0.4.0 | 2026-10-05 | **数据表落地**：CloudBase PostgreSQL 17.11 已建 `trends` / `favorites` 两表（各 5 行种子），DDL 落 `db/schema.sql`、种子落 `db/seed.sql`（幂等）；明确「列名必须加双引号保留驼峰」这条 SQL 书写规则 | **表结构定稿**，Day 17 读接口按此实现；接口数量与字段未变 |
 | v0.5.0 | 2026-10-05 | **一致性回写**：新增 §2.4「契约字段 ↔ 数据库列」逐字段核对表（15 个字段全部一致）；补齐脚本清单（新增 `db/reset.sql` 先删后建的重置脚本、`db/README.md` 执行与 select 验证手册）；`seed.sql` / `reset.sql` 的时间字段改为固定值以满足「可复现」 | 无接口变更；表结构未变。**契约与数据库从此互为依据，改一边必须先改契约** |
 | v0.6.0 | 2026-10-06 | **GET 读接口落地**：`/api/hot`（§3.3）与 `/api/favorites`（§3.5）由占位转**已实现**，补 `data[].date` / `data[].createdAt` / 顶层 `source` 字段与 `limit` 查询参数；`/api/sync`（§3.6）落地：百度源 URL 修正为 `platform=pc`、请求体缺省语义改为「只同步 baidu」、响应补 `fetched` / `detail[].favoritesRefreshed`；新增 §3.6「已知数据一致性问题」：同步的级联删除会连带清掉指向被删热搜的收藏（5 条种子收藏剩 3 条），Day 18 定修法。**前端另行修复** `Promise.all` 结果未解构导致页面永远显示示例数据的 bug（接口与契约一致、页面取数姿势错） | `GET /api/hot`、`GET /api/favorites`、`POST /api/sync` 正式可用；表结构未变 |
+| v0.8.0 | 2026-10-08 | **POST 写入接口落地**：`POST /api/favorites`（§3.7）由占位转**已实现**，与 §3.5 的 GET 共用云函数、按 `method` 分发；防两类重复提交 —— 业务重复（判重键 `trendId` → `409`「已经收藏过了」）与手抖连点/超时重试（可选请求头 `Idempotency-Key` 编进主键，重复命中 → `200` + 同一条数据，不多插一行）；输入侧挡住空 body / 非 JSON / 缺字段（一次列全）/ 类型不对 / 超长 / platform 不在白名单，`trendId` 在 `trends` 不存在时给 `404` 中文提示（不让外键抛成 500）；写入后**回读一遍**再返回；新增服务端结构化日志与响应头 `X-Request-Id`。§3.6 的级联删除问题**定为方案 b（去掉外键）**，脚本落 `db/fix_favorites_fk.sql`（**未执行**，等你确认）。**未改表结构** | 新增写入能力；GET 侧失败响应同步为字符串 `error`；表结构与既有接口未变 |
 | v0.7.0 | 2026-10-06 | **响应形状统一 + 同步源换轨**：失败响应 `error` 由对象 `{code,message}` 改为**中文字符串**（成功/失败结构对称）；`/api/hot` 排序改为**按热度倒序返回前 20 条**（`heat` 是 TEXT，须解析成数值排，字典序是错的），新增 `data[].heatNum`；`/api/sync` 按附录 F 换轨为**微博 / B站 / 抖音**三平台（原百度源下线），补齐各源必需请求头与字段映射，判重键 `(platform,title,date)` 落地为应用层 upsert（改表 SQL 见 `cloudfunctions/README.md`），新增 60 秒节流与 `force` 参数；前端平台清单补 `bilibili` | **破坏性变更**：消费方读 `error.message` 的地方要改成读 `error` 字符串（前端已兼容两种）；表结构未变 |
 
 ---

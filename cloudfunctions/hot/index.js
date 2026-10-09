@@ -37,15 +37,15 @@
 // 三、连库姿势（本项目踩过坑，别改）
 //    app.rdb({ database: "public" }) —— database 参数其实是 PostgreSQL 的 **schema 名**，
 //    不传时默认取 envId，而 envId 不是合法 schema → 上游报 Invalid schema → 接口 500。
-//    ⚠️ Day 19：这句已经搬到 shared/db.js，本文件不再自己连库。
-//       要改数据库操作 → 改 shared/db.js → node scripts/sync-shared.js → tcb fn deploy。
+//    ⚠️ Day 19：连库搬到数据访问层；Day 20 细拆：trends 表的查询都在 shared/trendsRepository.js。
+//       要改数据库操作 → 改 shared/ 下对应文件 → node scripts/sync-shared.js → tcb fn deploy。
 // ============================================================
 
 "use strict";
 
-// 数据访问层（Day 19 重构）：连库、写查询这些事全部搬到了 shared/db.js，
-// 由 scripts/sync-shared.js 复制到本目录的 lib/db.js。这里只管「要什么数据」。
-const db = require("./lib/db");
+// 数据访问层（Day 20 按表拆分）：trends 表的查询全部在 shared/trendsRepository.js，
+// 由 scripts/sync-shared.js 复制到本目录的 lib/trendsRepository.js。这里只管「要什么数据」。
+const trendsRepository = require("./lib/trendsRepository");
 
 // 统一响应：失败时 error 一律是「人能看懂的中文说明」（字符串）
 function ok(payload) {
@@ -145,8 +145,8 @@ exports.main = async (event, context) => {
     Number.isInteger(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 100) : 20;
 
   try {
-    // ---- 2. 取数据：查询本身在数据访问层，这里只传筛选条件 ----
-    const rows = await db.listTrends(envId, { date: date, platform: platform });
+    // ---- 2. 取数据：查询本身在 trendsRepository（数据访问层），这里只传筛选条件 ----
+    const rows = await trendsRepository.listTrends(envId, { date: date, platform: platform });
 
     // ---- 3. 按热度倒序（数值比较），同热度时按名次升序，保证结果稳定可复现 ----
     const sorted = rows

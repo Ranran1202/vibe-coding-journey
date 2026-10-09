@@ -512,8 +512,13 @@ tcb db execute -e "$ENV" --sql 'DELETE FROM favorites WHERE "id" LIKE '"'"'fav-i
 ## 8. Day 19 ｜分层重构：把「查数据库」搬到数据访问层
 
 > 今日核心题：**拆完之后，「查数据库」这段代码从哪移到了哪？**
-> 一句话答案：从 **5 个云函数各自的 `index.js`**，搬到了 **`shared/db.js` 这一个文件**；
-> 每个函数目录里的 `cloudfunctions/<fn>/lib/db.js` 只是它的**自动副本**（由 `scripts/sync-shared.js` 复制，不要手改）。
+> 一句话答案：从 **5 个云函数各自的 `index.js`**，搬到了 **`shared/` 这一个目录**；
+> 每个函数目录里的 `cloudfunctions/<fn>/lib/*.js` 只是它的**自动副本**（由 `scripts/sync-shared.js` 复制，不要手改）。
+>
+> ⚠️ Day 20 在 Day 19 的基础上**再细拆一层**：Day 19 时查询都集中在 `shared/db.js` 一个文件里，
+> Day 20 按表分家成 4 个 Repository（`trendsRepository` / `favoritesRepository` /
+> `dramaEpisodesRepository` / `dramaWatchLogsRepository`），`db.js` 只留连库与通用工具。
+> 最新结构见 **§9**。
 
 ### 8.1 分层示意图
 
@@ -531,21 +536,22 @@ tcb db execute -e "$ENV" --sql 'DELETE FROM favorites WHERE "id" LIKE '"'"'fav-i
 │     · 组装响应：{ ok, data, error } + CORS + X-Request-Id           │
 │     ❌ 这里不再出现任何表名、列名、SQL                               │
 └──────────────────────────────────────────────────────────────────┘
-                              │  dao.listFavorites(envId, { ... })
+                              │  favoritesRepository.findFavoriteById(envId, id)
                               │  「我要什么数据」  ≠  「怎么查」
                               ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  ② 数据访问层   shared/db.js   ←── 唯一真源（改库操作只改这里）      │
-│     · 连库：cloudbase.init().rdb({ database: "public" })           │
-│     · 列清单 COLUMNS：驼峰列一律加英文双引号                        │
-│     · 查询：.from().select().eq().order().limit()                  │
-│     · 兜底：pick() 驼峰读值 / toIso() 时间归一 / dbError() 中文报错   │
+│  ② 数据访问层   shared/   ←── 唯一真源（改库操作只改这里）          │
+│     · 核心 db.js：连库 rdb / pick / toIso / dbError                │
+│     · 按表 Repository：各自表的列清单 + 全部查询                    │
+│       trendsRepository / favoritesRepository /                     │
+│       dramaEpisodesRepository / dramaWatchLogsRepository           │
+│     · 查询一律：.from().select().eq().order().limit()               │
 └──────────────────────────────────────────────────────────────────┘
                               │  node scripts/sync-shared.js
                               │  （云函数按目录打包，跨目录 require 会挂）
                               ▼
-     cloudfunctions/{hot,favorites,sync,drama-episodes,drama-watchlogs}/lib/db.js
-                              │  以上 5 份都是同一份副本，内容完全一致
+     cloudfunctions/<fn>/lib/db.js + lib/<xxx>Repository.js
+                              │  每个函数只复制它用得上的那几个文件（见 §9）
                               ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │  ③ 数据库   PostgreSQL 17.11 · schema = public                    │
@@ -561,11 +567,11 @@ flowchart TD
     subgraph L1["① 接口层 · cloudfunctions/&lt;fn&gt;/index.js"]
         B["解析请求 · 校验参数<br/>业务判断 · 组装响应"]
     end
-    B -->|"dao.xxx(envId, 条件)<br/>只说要什么"| C
-    subgraph L2["② 数据访问层 · shared/db.js（唯一真源）"]
-        C["连库 rdb / 列清单 COLUMNS<br/>查询构造 / pick / toIso / dbError"]
+    B -->|"xxxRepository.xxx(envId, 条件)<br/>只说要什么"| C
+    subgraph L2["② 数据访问层 · shared/（唯一真源）"]
+        C["db.js 核心：连库 rdb / pick / toIso / dbError<br/>各 Repository：本表列清单 + 全部查询"]
     end
-    C -.->|"scripts/sync-shared.js<br/>复制到各函数目录 lib/db.js"| C2["lib/db.js 副本 ×5<br/>（勿手改）"]
+    C -.->|"scripts/sync-shared.js<br/>按依赖清单复制到 lib/"| C2["lib/db.js + lib/*Repository.js<br/>（勿手改）"]
     C --> D[("③ PostgreSQL 17.11<br/>schema = public")]
     style L1 fill:#eef6ff,stroke:#4a90d9
     style L2 fill:#eefbf2,stroke:#3fa46a
@@ -601,22 +607,25 @@ const res = await db.from("trends")                  // ← 表名写在接口�
   .eq("date", date).eq("platform", platform);        // ← 列名、查询条件都写在接口里
 ```
 
-拆分后（现在）：
+拆分后（Day 20，按表分家之后）：
 
 ```js
-const db = require("./lib/db");                      // ← 数据访问层
-const rows = await db.listTrends(envId, { date, platform });  // ← 只说「我要什么」
+const trendsRepository = require("./lib/trendsRepository");   // ← 数据访问层（这张表专属）
+const rows = await trendsRepository.listTrends(envId, { date, platform });  // ← 只说「我要什么」
 ```
+
+> Day 19 的第一版是 `require("./lib/db")` + `db.listTrends(...)`——所有表的查询挤在一个文件里；
+> Day 20 换成按表的 Repository，调用方一眼看得出「这个接口会动哪张表」。
 
 好处：
 
 | 好处 | 说明 |
 |---|---|
-| 改表只改一处 | 给 `trends` 加一列、改排序规则 → 只动 `shared/db.js` 一个函数 |
-| 列名只写一次 | 驼峰加引号这件事（`COLUMNS`）只有一个地方会写错 |
-| 新接口更快 | 下次加 `/api/topics`，直接 `dao.xxx()`，不用再复制一遍 `rdb` 初始化 |
+| 改表只改一处 | 给 `trends` 加一列、改排序规则 → 只动 `shared/trendsRepository.js`，其它表的 Repository 不受影响 |
+| 列名只写一次 | 驼峰加引号这件事现在分散到**各自 Repository 的列清单**里，一张表一份，不会再互相串 |
+| 新接口更快 | 下次加 `/api/topics`，直接 `xxxRepository.xxx()`，不用再复制一遍 `rdb` 初始化 |
 | 接口层能读懂 | `index.js` 现在读起来就是业务规则，不再被 SQL 细节打断 |
-| 换库成本低 | 真要换成别的存储，只改 `shared/db.js`，5 个接口一行不动 |
+| 换库成本低 | 真要换成别的存储，只改 `shared/` 下的 Repository，5 个接口一行不动 |
 
 ### 8.4 为什么是「复制」而不是 `require("../shared/db")`
 
@@ -628,7 +637,8 @@ const rows = await db.listTrends(envId, { date, platform });  // ← 只说「�
 原因：**CloudBase 云函数按目录整体打包上传**，`cloudfunctions/hot/` 被打包时不会带上兄弟目录 `shared/`，压缩包里没有这个文件，`require` 必然失败。
 所以共享代码只能**物理复制**进每个函数目录 —— 这件事交给 `scripts/sync-shared.js`，避免手抄出错。
 
-> 铁律：**改 `shared/db.js` → 跑 `node scripts/sync-shared.js` → 再 `tcb fn deploy`**，三步不能少一步。
+> 铁律：**改 `shared/` 下任一文件 → 跑 `node scripts/sync-shared.js` → 再 `tcb fn deploy <函数名> -e "$ENV" --force`**，
+> 三步不能少一步。（Day 20 起每个函数只复制它用得上的文件，依赖关系写在脚本顶部的 `PLAN` 里。）
 > 副本头部有「自动生成、不要手改」的标记，手改的内容下次同步就会被冲掉。
 
 ### 8.5 全接口回归（Day 19 完成标准之一）
@@ -666,8 +676,129 @@ PASS  GET /api/drama/watch-logs    count=6
 
 | 事项 | 说明 |
 |---|---|
-| 跨目录 `require` | 云端按目录打包，`require("../shared/db")` 必挂 → 必须复制成 `lib/db.js` |
-| 副本会被覆盖 | `lib/db.js` 由脚本生成，手改无效；改完 `shared/db.js` 一定要跑同步脚本再部署 |
-| `health` 不参与 | 它是纯探针、不连库，所以同步脚本的 `TARGETS` 里没有它；以后新函数要连库，记得加进 `TARGETS` |
+| 跨目录 `require` | 云端按目录打包，`require("../shared/xxx")` 必挂 → 必须复制成 `lib/xxx` |
+| 副本会被覆盖 | `lib/` 下的文件由脚本生成，手改无效；改完 `shared/` 下的源文件一定要跑同步脚本再部署 |
+| `health` 不参与 | 它是纯探针、不连库，所以同步脚本的 `PLAN` 里没有它；以后新函数要连库，记得加进 `PLAN` |
 | 重构 ≠ 改契约 | 本次只挪代码，**接口路径、字段名、错误文案一个字没动**，所以前端不用改 |
-| 部署要带 `--force` | 只改了依赖文件（`lib/db.js`）时，不带 `--force` 可能不重新打包 |
+| 部署要带 `--force` | 只改了依赖文件（`lib/*.js`）时，不带 `--force` 可能不重新打包 |
+
+---
+
+## 9. Day 20 ｜按表再拆一层：Repository
+
+> Day 19 把「查数据库」从 5 个云函数搬进了 `shared/db.js`（数据访问层第一次成型）；
+> Day 20 把这个 270 行的大文件**按表分家**：`db.js` 只留连库与通用工具，每张表一个 Repository。
+> 本次**零新增功能**：没有加接口、没改路径、没动字段名、没改错误文案，契约 `api-contract.md` 一字未动。
+
+### 9.1 为什么要再拆一层
+
+| Day 19（一个 db.js 全包）的毛病 | Day 20（按表拆）的改法 |
+|---|---|
+| 改 `trends` 的查询要在 270 行里找位置 | 打开 `trendsRepository.js`，一个 100 行的小文件 |
+| 四张表的列清单挤在同一个 `COLUMNS` 对象里 | 列清单回到各自表自己的 Repository 里 |
+| 看接口依赖哪张表，只能读完整篇代码 | `require("./lib/favoritesRepository")` 一眼即知 |
+
+### 9.2 重构后的目录结构（入口 / 业务 / 数据访问各放什么）
+
+```
+vibe-coding-journey/
+│
+├─ cloudfunctions/                      ① 入口 + ② 业务（HTTP 访问服务直接打到这里）
+│   │
+│   ├─ health/index.js                  GET  /api/health       纯探针，不连库，本次未改
+│   ├─ hot/index.js                     GET  /api/hot
+│   ├─ favorites/index.js               GET  /api/favorites
+│   │                                   POST /api/favorites
+│   ├─ sync/index.js                    POST /api/sync
+│   ├─ drama-episodes/index.js          GET  /api/drama/episodes     （我的AI漫·核心表）
+│   ├─ drama-watchlogs/index.js         GET  /api/drama/watch-logs   （我的AI漫·记录表）
+│   │
+│   └─ <fn>/lib/                        数据访问层的**自动副本**（scripts/sync-shared.js 生成，勿手改）
+│        ├─ db.js                       每个查库的函数都要（连库底座）
+│        ├─ trendsRepository.js         hot / favorites / sync 用
+│        ├─ favoritesRepository.js      favorites 用
+│        ├─ dramaEpisodesRepository.js  drama-episodes 用
+│        └─ dramaWatchLogsRepository.js drama-watchlogs 用
+│
+├─ shared/                              ③ 数据访问层（唯一真源，改库操作只改这里）
+│   ├─ db.js                            getDb() 连库 + pick / toIso / dbError 三个通用工具
+│   ├─ trendsRepository.js              trends 表的全部查询
+│   ├─ favoritesRepository.js           favorites 表的全部查询
+│   ├─ dramaEpisodesRepository.js       drama_episodes 表的全部查询
+│   └─ dramaWatchLogsRepository.js      drama_watch_logs 表的全部查询
+│
+└─ scripts/
+    ├─ sync-shared.js                   shared/ → cloudfunctions/<fn>/lib/（按依赖清单 PLAN 复制）
+    ├─ smoke-test.js                    全接口回归 20 项断言
+    └─ day20-snapshot.js                重构前/后逐字节对比（本次新写的回归工具）
+```
+
+**三层的边界（一句话版本）**：
+
+| 层 | 放在哪 | 负责什么 | 不负责什么 |
+|---|---|---|---|
+| **① 入口** | `cloudfunctions/<fn>/index.js` 的 `exports.main` | 取请求参数/请求体、分发 HTTP 方法、拼 HTTP 响应、写日志 | 不碰数据库 |
+| **② 业务** | 同一个文件里的业务函数（如 `handlePost`、`upsert`） | 校验必填与格式、判重规则、幂等策略、节流、上游取数与字段映射、排序与截断 | 不写 SQL 查询 |
+| **③ 数据访问** | `shared/*.js`（副本在 `lib/`） | 连库、列清单、写参数化查询、行归一化（驼峰兜底 / 时间归 UTC / 空值兜底） | 不做业务决策 |
+
+> 为什么「入口」和「业务」没拆成两个文件：这些函数每个只有 100~300 行、逻辑单一，
+> 拆成 `handler.js` + `service.js` 只会多一层跳转；若以后某个接口超过 500 行再说。
+> 真正的收益来自「业务 vs 数据」这条边界——它让替换存储、改表结构都只动一侧。
+
+### 9.3 各 Repository 对外暴露的函数（接口层能用的就这些）
+
+| Repository | 对外函数 | 谁在用 |
+|---|---|---|
+| `trendsRepository` | `listTrends(envId,{date,platform})`、`findTrendById(envId,id)`、`findTrendsByPlatformDate(envId,platform,date)`、`updateTrend(envId,id,patch)`、`insertTrend(envId,row)`、`latestTrendCreatedAt(envId,platform,date)` | hot、favorites、sync |
+| `favoritesRepository` | `listFavorites(envId)`、`findFavoriteById(envId,id)`、`findFavoriteByTrendId(envId,trendId)`、`insertFavorite(envId,row)` | favorites |
+| `dramaEpisodesRepository` | `listEpisodes(envId,{status})` | drama-episodes |
+| `dramaWatchLogsRepository` | `listWatchLogs(envId,{episodeId,viewer})` | drama-watchlogs |
+
+约定：查询函数出错**抛中文 Error**（云函数统一回 500）；只有 `insertTrend` / `insertFavorite` 例外——
+主键冲突是同步、并发幂等的预期内情况，返回 `{ok:false,error}` 交给调用方。
+
+### 9.4 回归验证清单：13 项「重构前 vs 重构后」逐字节对比
+
+做法：`node scripts/day20-snapshot.js before` 存基线 → 部署重构代码 → `... after` 重放同一批请求 →
+逐项比对 HTTP 状态码 + 响应体（原文），任何一项不同即退出码 1。
+
+| # | 接口 | 场景 | 重构前 | 重构后 | 一致 |
+|---|---|---|---|---|---|
+| 1 | GET /api/health | 健康探针（本次未改） | 200 · 73 B | 200 · 73 B | ✅（已剔除时钟字段 `time`） |
+| 2 | GET /api/hot?date=2026-10-06 | 正常读 20 条，热度倒序 | 200 · 6062 B | 200 · 6062 B | ✅ |
+| 3 | GET /api/hot?date=not-a-date | 日期非法 | 400 · 64 B | 400 · 64 B | ✅ |
+| 4 | GET /api/favorites | 收藏列表全量 | 200 · 1720 B | 200 · 1720 B | ✅ |
+| 5 | POST /api/favorites | 业务重复 → 判重 | 409 · 29 B | 409 · 29 B | ✅ |
+| 6 | POST /api/favorites | 缺必填 title | 400 · 35 B | 400 · 35 B | ✅ |
+| 7 | POST /api/favorites | trendId 不存在 | 404 · 40 B | 404 · 40 B | ✅ |
+| 8 | POST /api/favorites | 幂等键重复 → 回同一条 | 200 · 223 B | 200 · 223 B | ✅ |
+| 9 | PUT /api/favorites | 方法不允许 | 405 · 42 B | 405 · 42 B | ✅ |
+| 10 | POST /api/sync | 来源非法 | 400 · 61 B | 400 · 61 B | ✅ |
+| 11 | GET /api/drama/episodes | 漫剧核心表 6 集 | 200 · 1591 B | 200 · 1591 B | ✅ |
+| 12 | GET /api/drama/episodes?limit=abc | limit 非法 | 400 · 58 B | 400 · 58 B | ✅ |
+| 13 | GET /api/drama/watch-logs | 漫剧记录表 6 条 | 200 · 826 B | 200 · 826 B | ✅ |
+
+**结果：13 一致 / 0 不一致（行为零变化 ✅）**
+
+> 两点说明：
+> ① `/api/health` 的响应体里有服务器当前时间 `time`，两次请求必然不同，脚本对该字段做了剔除后再比——
+> 它在这次重构里一个字都没改，属于稳定的对照项。
+> ② 第 8 项依赖一条固定数据行（`id=fav-idem-day20-regression-01`，`trendId=baidu-4`），
+> 在抓基线前专门写好，用来验证幂等回读路径重构前后返回完全相同的 JSON。
+
+### 9.5 回归验证清单：全接口冒烟 20 项
+
+紧接上面再跑一次 `node scripts/smoke-test.js`（20 条断言，覆盖正常分支与关键错误分支），结果：
+
+```
+20 通过 / 0 失败（共 20 项）  全部通过 ✅
+GET /api/hot?date=2026-10-06  count=20 且热度倒序（首条=12030000）
+GET /api/favorites            count=9
+POST /api/favorites           正常写入 201 / 重复 409 / 缺字段 400 / 热搜不存在 404
+PUT                           405
+POST /api/sync                来源非法 400（不触发真同步，原因见 §8.5）
+GET /api/drama/episodes       count=6，第 1 集 order=1
+GET /api/drama/watch-logs     count=6
+```
+
+**结论：本次重构只挪代码位置，接口路径、字段名、状态码、错误文案一个都没变，也没有任何新增功能。**

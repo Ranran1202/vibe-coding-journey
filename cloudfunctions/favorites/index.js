@@ -20,13 +20,14 @@
 // ============================================================
 //
 // ============================================================
-// 二、分层之后，这个文件还剩什么（Day 19 的重点）
+// 二、分层之后，这个文件还剩什么（Day 19 分层、Day 20 按表细拆）
 //
 //   ✅ 留在这里（接口层/业务层）：解析请求体、校验必填与格式、判重决策、幂等策略、拼响应、写日志。
-//   ❌ 搬走了（数据层 shared/db.js）：`cloudbase.init().rdb({database:"public"})`、
-//      `.from("favorites").select(...).eq(...)`、驼峰兜底 `pick`、时间归一化 `toIso`、列清单。
+//   ❌ 搬走了（数据访问层）：`cloudbase.init().rdb({database:"public"})`、
+//      `.from("favorites").select(...).eq(...)`、列清单、驼峰兜底 `pick`、时间归一化 `toIso`。
+//      收藏表 → shared/favoritesRepository.js；确认热搜存在 → shared/trendsRepository.js。
 //
-//   一句话：**这个文件不再出现任何表名和列名**——想知道收藏表长什么样，去 shared/db.js 看。
+//   一句话：**这个文件不再出现任何 SQL 查询**——想知道收藏表怎么查，去 shared/favoritesRepository.js。
 //
 // ============================================================
 // 三、防了哪两种「重复提交 / 错误输入」（Day 18 的成果，重构后行为不变）
@@ -39,8 +40,11 @@
 
 "use strict";
 
-// 数据访问层（Day 19）：连库、写查询都在 shared/db.js，由 scripts/sync-shared.js 复制到 lib/db.js
-const dao = require("./lib/db");
+// 数据访问层（Day 20 按表拆分）：收藏表的查询在 favoritesRepository，
+// 确认热搜存在要用 trendsRepository（跨表的一次只读检查）。
+// 两者都由 scripts/sync-shared.js 复制到本目录的 lib/ 下。
+const favoritesRepository = require("./lib/favoritesRepository");
+const trendsRepository = require("./lib/trendsRepository");
 
 // ------------------------------------------------------------
 // 常量：输入上限与平台白名单
@@ -165,18 +169,8 @@ function parseBody(event) {
   }
 }
 
-// 行 → 契约形状。驼峰兜底读值（dao.pick）与时间统一 UTC（dao.toIso）都来自数据访问层。
-function shape(row) {
-  return {
-    id: row.id,
-    trendId: dao.pick(row, "trendId"),
-    title: row.title,
-    platform: row.platform,
-    note: row.note == null ? "" : row.note,
-    createdAt: dao.toIso(dao.pick(row, "createdAt")),
-    updatedAt: dao.toIso(dao.pick(row, "updatedAt")),
-  };
-}
+// 行 → 契约形状的归一化（驼峰兜底、时间统一 UTC、note 兜底空串）
+// Day 20 起下沉到 favoritesRepository：它返回的行已经是这个形状，接口层直接用，不再做字段处理。
 
 // ------------------------------------------------------------
 // GET：读收藏列表
@@ -187,13 +181,13 @@ async function handleGet(envId, query, requestId) {
     Number.isInteger(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 100) : Infinity;
 
   try {
-    // 查询在数据访问层；这里只负责排序与截断
-    const rows = (await dao.listFavorites(envId)).slice();
+    // 查询在 favoritesRepository（返回的行已是契约形状）；这里只负责排序与截断
+    const rows = (await favoritesRepository.listFavorites(envId)).slice();
     rows.sort(function (a, b) {
       return String(a.id).localeCompare(String(b.id));
     });
 
-    const data = rows.slice(0, limit).map(shape);
+    const data = rows.slice(0, limit);
     log("read_done", { requestId: requestId, count: data.length });
     return ok(200, { data: data, count: data.length }, requestId);
   } catch (err) {
@@ -283,22 +277,22 @@ async function handlePost(envId, event, requestId) {
   try {
     // ---- 3. 幂等：同一个 key 已经处理过 → 直接回第一次的结果，不再插一行 ----
     if (idemKey) {
-      const dupRow = await dao.findFavoriteById(envId, id);
+      const dupRow = await favoritesRepository.findFavoriteById(envId, id);
       if (dupRow) {
         log("idempotent_hit", { requestId: requestId, id: id, ms: Date.now() - startedAt });
-        return ok(200, { data: shape(dupRow) }, requestId);
+        return ok(200, { data: dupRow }, requestId);
       }
     }
 
     // ---- 4. 这条热搜真的存在吗？（先查再插，避免外键违规变成一句看不懂的 500）----
-    const trend = await dao.findTrendById(envId, trendId);
+    const trend = await trendsRepository.findTrendById(envId, trendId);
     if (!trend) {
       log("reject_trend_not_found", { requestId: requestId, trendId: trendId });
       return fail(404, "没有找到这条热搜（可能链接已失效）", requestId);
     }
 
     // ---- 5. 业务判重：同一条热搜收藏两次 → 409 ----
-    const existed = await dao.findFavoriteByTrendId(envId, trendId);
+    const existed = await favoritesRepository.findFavoriteByTrendId(envId, trendId);
     if (existed) {
       log("reject_duplicate_favorite", {
         requestId: requestId,
@@ -319,15 +313,15 @@ async function handlePost(envId, event, requestId) {
       createdAt: now,
       updatedAt: now,
     };
-    const ins = await dao.insertFavorite(envId, row);
+    const ins = await favoritesRepository.insertFavorite(envId, row);
     if (!ins.ok) {
       const msg = String((ins.error && ins.error.message) || ins.error);
       // 并发下两个同 key 请求同时插 → 后到的会撞主键；这不是错误，按幂等处理
       if (idemKey && /duplicate|unique|already exists|conflict/i.test(msg)) {
-        const dupRow = await dao.findFavoriteById(envId, id);
+        const dupRow = await favoritesRepository.findFavoriteById(envId, id);
         if (dupRow) {
           log("idempotent_race_hit", { requestId: requestId, id: id, ms: Date.now() - startedAt });
-          return ok(200, { data: shape(dupRow) }, requestId);
+          return ok(200, { data: dupRow }, requestId);
         }
       }
       log("insert_failed", { requestId: requestId, detail: msg });
@@ -335,7 +329,7 @@ async function handlePost(envId, event, requestId) {
     }
 
     // ---- 7. 写回读一遍：既保证返回的就是库里的真实值，也顺手验证「真的写进去了」----
-    const back = await dao.findFavoriteById(envId, id);
+    const back = await favoritesRepository.findFavoriteById(envId, id);
     if (!back) {
       log("insert_but_readback_empty", { requestId: requestId, id: id });
       return fail(500, "收藏写入后读不回来，请稍后重试", requestId);
@@ -349,7 +343,7 @@ async function handlePost(envId, event, requestId) {
       noteLen: note.length,
       ms: Date.now() - startedAt,
     });
-    return ok(201, { data: shape(back) }, requestId);
+    return ok(201, { data: back }, requestId);
   } catch (err) {
     log("post_throw", { requestId: requestId, detail: String((err && err.message) || err) });
     return fail(500, "收藏失败：" + String((err && err.message) || err), requestId);

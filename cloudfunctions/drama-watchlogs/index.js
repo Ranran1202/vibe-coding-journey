@@ -14,8 +14,9 @@
 
 "use strict";
 
-// 数据访问层（Day 19 重构）：连库、写查询、驼峰列兜底都在 shared/db.js（复制到 lib/db.js）
-const dao = require("./lib/db");
+// 数据访问层（Day 20 按表拆分）：drama_watch_logs 表的查询、按观看时间倒序、驼峰列兜底
+// 全部在 shared/dramaWatchLogsRepository.js（复制到本目录 lib/ 下）
+const watchLogsRepository = require("./lib/dramaWatchLogsRepository");
 
 function reply(statusCode, payload) {
   return {
@@ -55,8 +56,8 @@ exports.main = async (event, context) => {
   }
 
   try {
-    // 查询、按观看时间倒序、驼峰列兜底都在数据访问层，这里只按契约截断条数
-    const data = await dao.listWatchLogs(envId, {
+    // 查询、按观看时间倒序、驼峰列兜底都在 watchLogsRepository，这里只按契约截断条数
+    const data = await watchLogsRepository.listWatchLogs(envId, {
       episodeId: episodeId,
       viewer: viewer,
     });

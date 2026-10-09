@@ -50,9 +50,9 @@
 
 "use strict";
 
-// 数据访问层（Day 19 重构）：连库、写查询都在 shared/db.js（复制到 lib/db.js）。
+// 数据访问层（Day 20 按表拆分）：trends 表的读写都在 shared/trendsRepository.js（复制到 lib/ 下）。
 // 本文件只留：上游取数（HTTP）、字段映射、判重决策（业务）、节流策略。
-const dao = require("./lib/db");
+const trendsRepository = require("./lib/trendsRepository");
 
 // 桌面 UA：三个源都必需（B站缺它直接 412）
 const DESKTOP_UA =
@@ -219,8 +219,8 @@ async function fetchSource(key) {
  * 返回 { inserted, updated, skipped }。
  */
 async function upsert(envId, platform, date, items) {
-  // ① 取当天该平台已有行（查询在数据访问层，参数化，无 SQL 字符串拼接）
-  const existing = await dao.findTrendsByPlatformDate(envId, platform, date);
+  // ① 取当天该平台已有行（查询在 trendsRepository，参数化，无 SQL 字符串拼接）
+  const existing = await trendsRepository.findTrendsByPlatformDate(envId, platform, date);
 
   const byTitle = {};
   existing.forEach(function (r) {
@@ -235,7 +235,7 @@ async function upsert(envId, platform, date, items) {
     const hit = byTitle[it.title];
     if (hit) {
       // ② 命中标题 → 只更新热度/名次/链接，主键与入库时间不动
-      const up = await dao.updateTrend(envId, hit.id, {
+      const up = await trendsRepository.updateTrend(envId, hit.id, {
         rank: it.rank,
         heat: it.heat,
         url: it.url,
@@ -244,7 +244,7 @@ async function upsert(envId, platform, date, items) {
       else updated++;
     } else {
       // ③ 未命中 → 插入
-      const ins = await dao.insertTrend(envId, {
+      const ins = await trendsRepository.insertTrend(envId, {
         id: platform + "-" + it.rank,
         platform: platform,
         rank: it.rank,
@@ -266,8 +266,8 @@ async function upsert(envId, platform, date, items) {
   return { inserted: inserted, updated: updated, skipped: skipped };
 }
 
-// 60 秒节流用的「该平台当天最近一次入库时间」——查询本身在数据访问层
-// （dao.latestTrendCreatedAt），这里直接用它做「要不要打上游」的业务判断。
+// 60 秒节流用的「该平台当天最近一次入库时间」——查询本身在 trendsRepository
+// （latestTrendCreatedAt），这里直接用它做「要不要打上游」的业务判断。
 
 /**
  * 云函数入口。
@@ -316,7 +316,7 @@ exports.main = async (event, context) => {
 
     // ---- 频率自我保护：同一平台 60 秒内不重复打上游 ----
     if (!force) {
-      const last = await dao.latestTrendCreatedAt(envId, source, date);
+      const last = await trendsRepository.latestTrendCreatedAt(envId, source, date);
       if (last && Date.now() - last < 60 * 1000) {
         detail.push({
           source: source,

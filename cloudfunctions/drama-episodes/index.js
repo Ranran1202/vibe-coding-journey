@@ -23,8 +23,9 @@
 
 "use strict";
 
-// 数据访问层（Day 19 重构）：连库、写查询、cast 归一化都在 shared/db.js（复制到 lib/db.js）
-const dao = require("./lib/db");
+// 数据访问层（Day 20 按表拆分）：drama_episodes 表的查询、按集数排序、cast 归一化
+// 全部在 shared/dramaEpisodesRepository.js（复制到本目录 lib/ 下）
+const episodesRepository = require("./lib/dramaEpisodesRepository");
 
 // 统一响应：三个键恒定出现（ok / data / error），与契约 §1.2 完全一致
 function reply(statusCode, payload) {
@@ -65,8 +66,8 @@ exports.main = async (event, context) => {
   }
 
   try {
-    // 查询、按集数排序、cast 归一化都在数据访问层，这里只按契约截断条数
-    const data = await dao.listEpisodes(envId, { status: status });
+    // 查询、按集数排序、cast 归一化都在 episodesRepository，这里只按契约截断条数
+    const data = await episodesRepository.listEpisodes(envId, { status: status });
     return ok(limit ? data.slice(0, limit) : data);
   } catch (err) {
     return fail(500, "读取剧集数据失败：" + String((err && err.message) || err));

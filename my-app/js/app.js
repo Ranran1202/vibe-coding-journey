@@ -23,7 +23,8 @@
     error: false,        // 首页/收藏列表是否加载失败
     dataSource: "live",  // Day 17：数据来自哪里 —— live（云端真实接口）/ seed（本地示例兜底）
     sourceDate: "",      // 接口返回的数据日期（YYYY-MM-DD）
-    sourceNote: ""       // 退回示例数据时的原因（用于页面提示）
+    sourceNote: "",      // 退回示例数据时的原因（用于页面提示）
+    lastUpdatedAt: ""    // Day 20 余力加练：这批数据的「最后更新时间」（取列表里最新的 createdAt）
   };
 
   // 平台列表页独立的数据状态（与首页列表互不干扰，便于各自演示四态）
@@ -128,6 +129,7 @@
   function fallbackToSeed(reason) {
     state.dataSource = "seed";
     state.sourceNote = reason;
+    state.lastUpdatedAt = ""; // 示例数据没有真实的库时间，别把上一次的残留显示出来
     return { items: (window.HOT_DATA || []), source: "seed" };
   }
 
@@ -145,7 +147,10 @@
     }
     if (empty) {
       return new Promise(function (resolve) {
-        setTimeout(function () { resolve({ items: [], source: "empty" }); }, slow ? 2000 : 120);
+        setTimeout(function () {
+          state.lastUpdatedAt = ""; // 空态没有数据行，同样清掉残留
+          resolve({ items: [], source: "empty" });
+        }, slow ? 2000 : 120);
       });
     }
 
@@ -186,6 +191,10 @@
         // 接口会告诉我们这批数据是「今天同步的真实数据」还是「历史 seed 兜底数据」
         state.dataSource = json.source === "seed" ? "seed" : "live";
         state.sourceDate = json.date || "";
+        // Day 20 余力加练：从数据行里取最新的入库时间，作为「最后更新时间」展示。
+        // 为什么在前端算：接口返回的每行都带 createdAt（数据库写入时间），列表里最新的那条
+        // 就是「这批数据最后一次变化」的时间——不用动后端就能拿到。
+        state.lastUpdatedAt = latestCreatedAtOf(Array.isArray(json.data) ? json.data : []);
         return { items: Array.isArray(json.data) ? json.data : [], source: json.source || "live" };
       })
       .catch(function (err) {
@@ -339,6 +348,33 @@
     return names.length ? names.join("、") : "公开榜单";
   }
 
+  // Day 20 余力加练：取列表里最新的 createdAt（ISO 字符串，统一格式可直接比大小；
+  // 用 Date.parse 比更稳，兼容个别网关把它折叠成小写键的情况——行里字段由接口保证，直接读即可）。
+  // 返回 "" 表示没有可用的时间（空列表 / 行上没有 createdAt）。
+  function latestCreatedAtOf(items) {
+    var latest = "";
+    (items || []).forEach(function (it) {
+      var t = it && it.createdAt ? Date.parse(it.createdAt) : NaN;
+      if (!Number.isNaN(t)) {
+        var cur = latest === "" ? -Infinity : Date.parse(latest);
+        if (t > cur) latest = it.createdAt;
+      }
+    });
+    return latest;
+  }
+
+  // 把 ISO 时间转成页面友好的本地写法：2026-10-08T19:51:34+08:00 → 10-08 19:51
+  function formatUpdatedAt(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return String(iso);
+    function pad(n) { return (n < 10 ? "0" : "") + n; }
+    return (
+      pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + " " +
+      pad(d.getHours()) + ":" + pad(d.getMinutes())
+    );
+  }
+
   function renderDataSourceBadge() {
     var el = document.getElementById("dataSourceBadge");
     if (!el) return;
@@ -356,6 +392,7 @@
       el.textContent =
         "真实数据 · 来源：" + platformNamesOf(state.items) +
         (state.sourceDate ? " · " + state.sourceDate : "") +
+        (state.lastUpdatedAt ? " · 最后更新 " + formatUpdatedAt(state.lastUpdatedAt) : "") +
         " · 按热度倒序前 " + state.items.length + " 条";
       el.className = "data-source is-live";
     }

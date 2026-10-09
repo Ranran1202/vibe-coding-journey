@@ -75,14 +75,18 @@ function run() {
     })
     // ===== 平台列表页：四种状态 =====
     .then(() => {
-      const { doc } = buildApp("", "#/platforms");
+      const { window, doc } = buildApp("", "#/platforms");
       return sleep(350).then(() => {
         const cards = doc.querySelectorAll("#platformList .platform-card");
         const loading = doc.querySelector("#platformList .loading-box");
         const err = doc.querySelector("#platformList .error-box");
         const empty = doc.querySelector("#platformList .empty-box");
+        // Day 14 写死过 cards.length === 3；Day 17 加了 B 站后 config.js 变成 4 个平台，
+        // 这里改成按 config.js 的实际平台数断言，以后再加平台不用手改数字。
+        const expect = (window.PLATFORMS || []).length;
         ok("平台页·加载成功：默认列出全部平台卡片",
-          cards.length === 3 && !loading && !err && !empty, "cards=" + cards.length);
+          expect > 0 && cards.length === expect && !loading && !err && !empty,
+          "cards=" + cards.length + " expect=" + expect);
       });
     })
     .then(() => {

@@ -1,10 +1,13 @@
 // my-app/js/config.js
-// 平台清单。第 3 步的平台切换标签将读取这里，目前仅作数据来源定义。
+// 平台清单：页面按这里渲染三平台并列榜单；key 必须与数据库 trends.platform 取值一致。
+//
+// Day 20 收尾：百度（baidu）已从清单移除——附录 F 没给百度的公开接口，
+// 同步云函数只接微博 / 抖音 / B站 三个源，留着 baidu 只会多出一个永远空着的栏目。
 window.PLATFORMS = [
-  { key: "weibo", name: "微博" },
-  { key: "baidu", name: "百度" },
-  { key: "douyin", name: "抖音" },
-  // Day 17 补：同步云函数按附录 F 用的是 B站（bilibili），这里补上平台项，
-  // 否则同步进来的 B站数据在平台切换与筛选里显示不出来。
-  { key: "bilibili", name: "B站" }
+  { key: "weibo", name: "微博", board: "微博热搜榜" },
+  { key: "douyin", name: "抖音", board: "抖音热点榜" },
+  { key: "bilibili", name: "B站", board: "B站热门榜" }
 ];
+
+// 首页主体：三个平台并列的榜单卡片，顺序即页面从上到下（窄屏）/左到右（宽屏）的展示顺序。
+window.BOARDS = window.PLATFORMS;

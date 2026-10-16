@@ -9,19 +9,23 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { JSDOM } = require("jsdom");
 
+const { HOST, HOT, installMockApi } = require("./mock-api.cjs");
+
 const APP_DIR = path.resolve(__dirname, "..");
 const INDEX = path.join(APP_DIR, "index.html");
 
 let html = fs.readFileSync(INDEX, "utf8").replace(/<script[^>]*src=[^>]*><\/script>/g, "");
+// url 用真实静态托管域名：页面靠主机名反推接口域名，hostname 不对就取不到数据
 const dom = new JSDOM(html, {
   runScripts: "dangerously",
-  url: "https://localhost/my-app/",
+  url: "https://" + HOST + "/",
   pretendToBeVisual: true,
 });
 const { window } = dom;
 const doc = window.document;
 
-["config.js", "data.js", "store.js", "app.js"].forEach((f) => {
+installMockApi(window);   // 打桩云端接口（页面本身不含任何内置数据）
+["config.js", "store.js", "app.js"].forEach((f) => {
   window.eval(fs.readFileSync(path.join(APP_DIR, "js", f), "utf8"));
 });
 
@@ -47,11 +51,10 @@ function run() {
       window.dispatchEvent(new window.Event("hashchange"));
     };
 
-    // 选取两条真实数据作为「我的收藏」
-    const data = window.HOT_DATA || [];
-    const itemA = data.find((d) => d.title.indexOf("初雪") !== -1);          // 示例热搜一
-    const itemB = data.find((d) => d.title.indexOf("剧") !== -1);            // 示例热搜三
-    ok("前置：能取到两条用于收藏的示例数据", !!itemA && !!itemB,
+    // 从接口夹具里挑两条作为「我的收藏」（夹具覆盖微博 / 抖音 / B站 三平台）
+    const itemA = HOT.find((d) => d.title.indexOf("初雪") !== -1);
+    const itemB = HOT.find((d) => d.title.indexOf("剧") !== -1);
+    ok("前置：夹具里能取到两条用于收藏的数据", !!itemA && !!itemB,
       "itemA=" + (itemA && itemA.title) + "；itemB=" + (itemB && itemB.title));
 
     // 收藏 itemA、itemB，并给 itemA 写一条备注（我的数据对象的一部分）

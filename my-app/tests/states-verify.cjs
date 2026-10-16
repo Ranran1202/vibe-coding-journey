@@ -10,17 +10,21 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { JSDOM } = require("jsdom");
 
+const { HOST, HOT, installMockApi } = require("./mock-api.cjs");
+
 const APP_DIR = path.resolve(__dirname, "..");
 const INDEX = path.join(APP_DIR, "index.html");
 
 // 用指定查询参数 + hash 构建一份全新的 my-app（每个场景独立，互不干扰）
+// url 用真实静态托管域名：页面靠主机名反推接口域名，hostname 不对就会连不上接口。
 function buildApp(query, hash) {
   let html = fs.readFileSync(INDEX, "utf8").replace(/<script[^>]*src=[^>]*><\/script>/g, "");
-  const url = "https://localhost/my-app/" + (query || "") + (hash || "#/home");
+  const url = "https://" + HOST + "/" + (query || "") + (hash || "#/home");
   const dom = new JSDOM(html, { runScripts: "dangerously", url, pretendToBeVisual: true });
   const { window } = dom;
   const doc = window.document;
-  ["config.js", "data.js", "store.js", "app.js"].forEach((f) => {
+  installMockApi(window);   // 打桩云端接口（页面本身不含任何内置数据）
+  ["config.js", "store.js", "app.js"].forEach((f) => {
     window.eval(fs.readFileSync(path.join(APP_DIR, "js", f), "utf8"));
   });
   return { window, doc };
@@ -121,7 +125,7 @@ function run() {
         const detailVisible = !doc.getElementById("view-detail").classList.contains("hidden");
         const listHidden = doc.getElementById("view-list").classList.contains("hidden");
         const title = doc.querySelector("#detailContent .detail-title");
-        const expect = (window.HOT_DATA || []).find((d) => d.platform === "weibo" && d.rank === 1);
+        const expect = HOT.find((d) => d.platform === "weibo" && d.rank === 1);
         ok("详情页·独立访问：#/detail/weibo-1 直接打开且视图可见、列表隐藏",
           detailVisible && listHidden && !!title, "detailVisible=" + detailVisible + " listHidden=" + listHidden);
         ok("详情页·内容正确：渲染出对应热搜标题",

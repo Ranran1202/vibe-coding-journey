@@ -8,6 +8,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { JSDOM } = require("jsdom");
 
+const { HOST, installMockApi } = require("./mock-api.cjs");
+
 const APP_DIR = path.resolve(__dirname, "..");
 const INDEX = path.join(APP_DIR, "index.html");
 
@@ -15,16 +17,18 @@ const INDEX = path.join(APP_DIR, "index.html");
 let html = fs.readFileSync(INDEX, "utf8");
 html = html.replace(/<script[^>]*src=[^>]*><\/script>/g, "");
 
+// url 用真实静态托管域名：页面靠主机名反推接口域名，hostname 不对就取不到数据
 const dom = new JSDOM(html, {
   runScripts: "dangerously",
-  url: "https://localhost/my-app/",
+  url: "https://" + HOST + "/",
   pretendToBeVisual: true,
 });
 const { window } = dom;
 const doc = window.document;
 
-// 2) 按 index.html 中的顺序注入脚本：config -> data -> store -> app
-["config.js", "data.js", "store.js", "app.js"].forEach((f) => {
+// 2) 按 index.html 中的顺序注入脚本：config -> store -> app（data.js 假数据已删除）
+installMockApi(window);   // 打桩云端接口
+["config.js", "store.js", "app.js"].forEach((f) => {
   const code = fs.readFileSync(path.join(APP_DIR, "js", f), "utf8");
   window.eval(code);
 });

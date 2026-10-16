@@ -9,8 +9,12 @@
 <body>
   <!-- 站点头部 -->
   <header class="site-header">
-    <h1>今日热搜</h1>
-    <p class="subtitle">一眼看完全网在热什么</p>
+    <div class="header-main">
+      <h1>今日热搜</h1>
+      <p class="subtitle">聚合微博、抖音、B站三大平台的当日实时热榜</p>
+    </div>
+    <!-- 右上角：数据更新时间（取接口返回的真实抓取时间，不是页面打开时间） -->
+    <p class="update-time" id="updateTime" aria-live="polite"></p>
     <!-- 余力加练：返回上一页（history.back） -->
     <button class="btn-back" id="btnBack" type="button">← 返回</button>
   </header>
@@ -20,6 +24,7 @@
     <a class="nav-link" href="#/home" data-view="home">首页</a>
     <a class="nav-link" href="#/platforms" data-view="platforms">平台</a>
     <a class="nav-link" href="#/fav" data-view="fav">我的收藏</a>
+    <a class="nav-link" href="#/check" data-view="check">检查台</a>
     <a class="nav-link" href="#/about" data-view="about">关于</a>
   </nav>
 
@@ -28,9 +33,9 @@
     当前地址：<span id="routeLabel">#/hot</span>
   </p>
 
-  <!-- 视图①：列表（今日热搜 / 我的收藏 共用 #hotList，按 hash 切换 favOnly） -->
+  <!-- 视图①：列表（今日热搜 / 我的收藏 共用，按 hash 切换 favOnly） -->
   <main class="container view" id="view-list">
-    <!-- 平台切换标签（仅「今日热搜」视图显示） -->
+    <!-- 平台切换标签（仅「今日热搜」视图显示；选中某平台时只显示该平台榜单卡片） -->
     <nav class="platform-tabs" id="platformTabs" aria-label="平台切换"></nav>
 
     <div class="toolbar">
@@ -46,11 +51,11 @@
     <!-- 筛选结果数量（屏幕阅读器可朗读，aria-live 实时播报） -->
     <p class="result-count" id="resultCount" aria-live="polite"></p>
 
-    <!-- Day 17：数据来源标注（真实数据 / 示例数据），由 js/app.js 的 renderDataSourceBadge() 填充 -->
+    <!-- 数据来源标注（数据来自云端数据库，由 js/app.js 的 renderDataSourceBadge() 填充） -->
     <p class="data-source" id="dataSourceBadge" aria-live="polite"></p>
 
-    <!-- 列表（由 js/app.js 渲染；Day 17 起数据来自云端接口 GET /api/hot，支持 正常/加载/错误/空 四态） -->
-    <ul class="hot-list" id="hotList"></ul>
+    <!-- 三平台并列榜单（由 js/app.js 渲染；数据来自云端接口 GET /api/hot，支持 正常/加载/错误/空 四态） -->
+    <div class="board-grid" id="hotList"></div>
   </main>
 
   <!-- 视图②：平台列表页（独立视图，列出各平台，点击进入该平台首页） -->
@@ -66,30 +71,52 @@
     <div id="detailContent"></div>
   </main>
 
-  <!-- 视图④：关于（静态信息页） -->
+  <!-- 视图④：检查台（健康状态 / 核心表真实数据 / 一次写入测试） -->
+  <main class="container view hidden" id="view-check">
+    <h2>检查台</h2>
+    <p class="view-desc">验证「页面 → 公网接口 → 数据库」整条链路是否真的通：三项都绿才算部署成功。</p>
+
+    <section class="check-card">
+      <h3 class="check-title">① 健康状态</h3>
+      <p class="check-line" id="checkHealth">检测中…</p>
+    </section>
+
+    <section class="check-card">
+      <h3 class="check-title">② 核心表真实数据（trends）</h3>
+      <ul class="check-list" id="checkList"></ul>
+    </section>
+
+    <section class="check-card">
+      <h3 class="check-title">③ 收藏写入测试（POST /api/favorites）</h3>
+      <p class="check-hint">取列表第一条真实热搜写入一次收藏。再点一次会命中服务端的判重（409「已经收藏过了」）——这正好验证写入接口真的落库了。</p>
+      <button class="btn-retry" id="btnWriteTest" type="button">写入一条收藏测试</button>
+      <pre class="check-out" id="checkWriteOut"></pre>
+    </section>
+  </main>
+
+  <!-- 视图⑤：关于（静态信息页） -->
   <main class="container view hidden" id="view-about">
     <h2>关于</h2>
-    <p>这是一个纯静态演示应用，数据均为示例。本页用于说明「可独立访问的三视图」结构。</p>
+    <p>本页数据全部来自云端数据库（CloudBase PostgreSQL），由云函数接口实时读出，页面本身不含任何内置数据。</p>
     <ul class="about-list">
-      <li><strong>首页</strong>（<code>#/home</code>）：热搜列表，支持平台标签切换与关键词筛选。</li>
+      <li><strong>首页</strong>（<code>#/home</code>）：微博 / 抖音 / B站 三平台并列榜单，支持平台标签与关键词筛选。</li>
       <li><strong>平台列表页</strong>（<code>#/platforms</code>）：列出各平台，点击进入对应平台首页。</li>
-      <li><strong>热搜详情页</strong>（<code>#/detail/:id</code>，如 <code>#/detail/weibo-1</code>）：单条热搜的排名/标题/热度/来源/原链接/收藏/备注，可独立打开。</li>
-      <li>三个列表类视图（首页、平台列表页、我的收藏）均补齐 <strong>加载中 / 加载成功 / 没有结果 / 请求失败</strong> 四种状态，可用地址栏参数触发：
-        <code>?slow=1</code>（加载中）、<code>?fail=1</code>（请求失败）、<code>?empty=1</code>（没有结果）。</li>
+      <li><strong>热搜详情页</strong>（<code>#/detail/:id</code>）：单条热搜的排名/标题/热度/来源/原链接/收藏/备注，可独立打开。</li>
+      <li><strong>检查台</strong>（<code>#/check</code>）：健康状态、核心表真实数据、收藏写入测试入口。</li>
+      <li>三个列表类视图（首页、平台列表页、我的收藏）均具备 <strong>加载中 / 加载成功 / 没有结果 / 请求失败</strong> 四种状态。</li>
       <li>「我的收藏」视图（<code>#/fav</code>）下的关键词筛选会同时匹配<strong>标题与备注</strong>。</li>
     </ul>
   </main>
 
   <footer class="site-footer">
-    <p>纯静态演示 · 数据均为示例</p>
+    <p>数据来自云端数据库 · 由 CloudBase 云函数实时读取</p>
   </footer>
 
   <!-- 复制成功提示挂载点 -->
   <div id="toastRoot"></div>
 
-  <!-- 数据层：平台清单 / 示例热搜 / 收藏存储 / 渲染逻辑 -->
+  <!-- 数据层：平台清单 / 收藏存储 / 渲染逻辑（原 js/data.js 内置假数据已移除） -->
   <script src="js/config.js"></script>
-  <script src="js/data.js"></script>
   <script src="js/store.js"></script>
   <script src="js/app.js"></script>
 </body>

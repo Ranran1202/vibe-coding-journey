@@ -8,19 +8,23 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { JSDOM } = require("jsdom");
 
+const { HOST, HOT, installMockApi } = require("./mock-api.cjs");
+
 const APP_DIR = path.resolve(__dirname, "..");
 const INDEX = path.join(APP_DIR, "index.html");
 
 let html = fs.readFileSync(INDEX, "utf8").replace(/<script[^>]*src=[^>]*><\/script>/g, "");
+// url 用真实静态托管域名：页面靠主机名反推接口域名，hostname 不对就取不到数据
 const dom = new JSDOM(html, {
   runScripts: "dangerously",
-  url: "https://localhost/my-app/",
+  url: "https://" + HOST + "/",
   pretendToBeVisual: true,
 });
 const { window } = dom;
 const doc = window.document;
 
-["config.js", "data.js", "store.js", "app.js"].forEach((f) => {
+installMockApi(window);   // 打桩云端接口（页面本身不含任何内置数据）
+["config.js", "store.js", "app.js"].forEach((f) => {
   window.eval(fs.readFileSync(path.join(APP_DIR, "js", f), "utf8"));
 });
 
@@ -60,7 +64,7 @@ function run() {
     setKw("");
     const plt = (window.PLATFORMS && window.PLATFORMS[0]) || null;
     const clicked = clickTab(plt ? plt.name : "微博");
-    const expected = plt ? window.HOT_DATA.filter((d) => d.platform === plt.key).length : -1;
+    const expected = plt ? HOT.filter((d) => d.platform === plt.key).length : -1;
     const r2 = list();
     ok("平台筛选：点击「" + (plt ? plt.name : "微博") + "」后只显示该平台", clicked && r2.length === expected && expected > 0 && expected < initial, "期望 " + expected + "，实际 " + r2.length + "（总 " + initial + "）");
 

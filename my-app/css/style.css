@@ -110,9 +110,8 @@ body {
   font-size: 0.82rem;
 }
 
-/* Day 17：数据来源标注（真实数据 / 示例数据）。
-   真实数据用绿色实心点、示例数据用琥珀色点 —— 截图里一眼能分辨，
-   避免「拿假数据交差」这种最不该发生的失误。 */
+/* 数据来源标注：只要显示这一行，就表示数据确实来自云端数据库（绿色实心点）。
+   取不到数据时整行不渲染 —— 宁可空白，也不用琥珀色「示例」点去暗示有兜底数据。 */
 .data-source {
   margin: -0.5rem 0 0.8rem;
   font-size: 0.82rem;
@@ -565,4 +564,95 @@ body {
   .btn-back { min-height: 44px; }
   .platform-link { min-height: 44px; }
   .detail-actions .btn-go, .detail-actions .btn-fav-toggle { min-height: 44px; }
+}
+
+/* ============================================================
+   Day 20 收尾：三平台并列榜单 + 右上角更新时间 + 检查台
+   ============================================================ */
+
+/* 右上角「数据更新于 …」：取接口返回的真实抓取时间，不是页面打开时间 */
+.site-header { position: relative; }
+.update-time {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+/* 首页主体：三个平台并列的榜单卡片（窄屏自动堆成一列） */
+#view-list.container { max-width: 1080px; }
+.board-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+.board-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.9rem;
+}
+.board-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.7rem;
+}
+.board-name { font-weight: 700; font-size: 1.05rem; }
+.board-title { color: var(--muted); font-size: 0.8rem; }
+.board-count { margin-left: auto; color: var(--muted); font-size: 0.78rem; }
+.board-card .hot-item { margin-bottom: 0.6rem; }
+.board-card .hot-item:last-child { margin-bottom: 0; }
+/* 单平台没数据时的占位文案（刻意不用 .empty-box，避免整页看起来像空态） */
+.board-empty { list-style: none; color: var(--muted); font-size: 0.85rem; padding: 0.6rem 0; }
+
+/* 检查台（#/check） */
+.check-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+.check-title { margin: 0 0 0.5rem; font-size: 1rem; }
+.check-line { margin: 0; font-size: 0.9rem; }
+.check-line.is-ok { color: #17673f; font-weight: 600; }
+.check-line.is-bad { color: #b91c2c; font-weight: 600; }
+.check-hint { color: var(--muted); font-size: 0.85rem; margin: 0 0 0.6rem; }
+.check-list { list-style: none; margin: 0 0 0.5rem; padding: 0; }
+.check-item {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  padding: 0.35rem 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: 0.9rem;
+}
+.check-item.is-muted { color: var(--muted); font-size: 0.8rem; border-bottom: 0; }
+.check-item.is-bad { color: #b91c2c; }
+.check-plat { flex: 0 0 3rem; color: var(--accent); font-weight: 600; font-size: 0.82rem; }
+.check-title-text { flex: 1; }
+.check-heat { color: var(--muted); font-size: 0.8rem; }
+.check-out {
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: #0d1117;
+  color: #e6edf3;
+  padding: 0.7rem;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  margin: 0.7rem 0 0;
+  min-height: 2.5rem;
+  max-height: 260px;
+  overflow: auto;
+}
+
+@media (max-width: 860px) {
+  .board-grid { grid-template-columns: 1fr; }
+  .update-time { position: static; margin-top: 0.4rem; }
 }

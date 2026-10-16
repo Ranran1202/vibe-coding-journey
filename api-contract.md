@@ -15,8 +15,8 @@
 | 前端 | `my-app` —— **原生 JS 静态站**（`index.html` + `js/*.js`，**无构建步骤**），托管于 CloudBase 静态网站托管 |
 | 后端 | 腾讯云 CloudBase（云开发）· 普通云函数 + HTTP 访问服务 |
 | 数据库 | CloudBase **PostgreSQL 17.11**（真 SQL）。**2026-10-05（Day 16）已建表**。脚本：`db/schema.sql`（建表）、`db/seed.sql`（补种子·幂等）、`db/reset.sql`（重置·先删后建）；执行与验证步骤见 `db/README.md` |
-| 契约版本 | **v0.8.0** |
-| 最后更新 | 2026-10-08 |
+| 契约版本 | **v0.9.0** |
+| 最后更新 | 2026-10-16 |
 | 推导依据 | `my-app/index.html` 的 4 个视图 + `js/app.js` 的数据加载逻辑 + `js/data.js` / `js/config.js` / `js/store.js` 的数据结构 |
 | 关联文档 | `TECH_DESIGN.md`（§4 数据模型、§5 API、§6.2 Phase 2 数据流） |
 
@@ -148,7 +148,7 @@
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `id` | string | 主键，形如 `weibo-1`（= `platform` + `-` + `rank`），**与前端 `app.js` 的 `itemId()` 完全一致** |
+| `id` | string | 主键。**Day 20 起同步写入的行带日期后缀**，形如 `weibo-11-d1016`（= `platform` + `-` + `rank` + `-dMMDD`）；Day 20 之前的历史行是旧格式 `weibo-1`（无后缀）。前端只透传不解析，`itemId()` 语义不变 |
 | `platform` | string | 来源平台 key：`weibo` / `baidu` / `douyin` / `bilibili`（Day 17 同步源按附录 F 为微博 / B站 / 抖音） |
 | `rank` | number | 排名 |
 | `title` | string | 标题 |
@@ -298,7 +298,7 @@
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `data[].id` | string | 唯一标识，= `platform-rank`，**与前端 `itemId()` 一致**，收藏/详情都靠它 |
+| `data[].id` | string | 唯一标识。Day 20 起同步行形如 `weibo-11-d1016`（`platform-rank-dMMDD`，跨天不再撞主键）；历史行仍为旧格式 `platform-rank`。收藏/详情都透传它，前端无需感知格式 |
 | `data[].rank` | number | 排名 |
 | `data[].title` | string | 标题 |
 | `data[].heat` | string | 热度（原样字符串，如 `"781 万"`） |
@@ -643,6 +643,7 @@
 | v0.5.0 | 2026-10-05 | **一致性回写**：新增 §2.4「契约字段 ↔ 数据库列」逐字段核对表（15 个字段全部一致）；补齐脚本清单（新增 `db/reset.sql` 先删后建的重置脚本、`db/README.md` 执行与 select 验证手册）；`seed.sql` / `reset.sql` 的时间字段改为固定值以满足「可复现」 | 无接口变更；表结构未变。**契约与数据库从此互为依据，改一边必须先改契约** |
 | v0.6.0 | 2026-10-06 | **GET 读接口落地**：`/api/hot`（§3.3）与 `/api/favorites`（§3.5）由占位转**已实现**，补 `data[].date` / `data[].createdAt` / 顶层 `source` 字段与 `limit` 查询参数；`/api/sync`（§3.6）落地：百度源 URL 修正为 `platform=pc`、请求体缺省语义改为「只同步 baidu」、响应补 `fetched` / `detail[].favoritesRefreshed`；新增 §3.6「已知数据一致性问题」：同步的级联删除会连带清掉指向被删热搜的收藏（5 条种子收藏剩 3 条），Day 18 定修法。**前端另行修复** `Promise.all` 结果未解构导致页面永远显示示例数据的 bug（接口与契约一致、页面取数姿势错） | `GET /api/hot`、`GET /api/favorites`、`POST /api/sync` 正式可用；表结构未变 |
 | v0.8.0 | 2026-10-08 | **POST 写入接口落地**：`POST /api/favorites`（§3.7）由占位转**已实现**，与 §3.5 的 GET 共用云函数、按 `method` 分发；防两类重复提交 —— 业务重复（判重键 `trendId` → `409`「已经收藏过了」）与手抖连点/超时重试（可选请求头 `Idempotency-Key` 编进主键，重复命中 → `200` + 同一条数据，不多插一行）；输入侧挡住空 body / 非 JSON / 缺字段（一次列全）/ 类型不对 / 超长 / platform 不在白名单，`trendId` 在 `trends` 不存在时给 `404` 中文提示（不让外键抛成 500）；写入后**回读一遍**再返回；新增服务端结构化日志与响应头 `X-Request-Id`。§3.6 的级联删除问题**定为方案 b（去掉外键）**，脚本落 `db/fix_favorites_fk.sql`（**未执行**，等你确认）。**未改表结构** | 新增写入能力；GET 侧失败响应同步为字符串 `error`；表结构与既有接口未变 |
+| v0.9.0 | 2026-10-16 | **Day 20 真机验收修复**：`/api/sync` 写入主键由 `platform-rank` 改为 **`platform-rank-dMMDD`**。实测证据：当日同步返回 `{"fetched":50,"inserted":0,"skipped":50}`、库里当日行数为 0，页面因此空列表 —— 跨天同步的新数据全部撞上历史行主键被静默跳过；而库中 10-09 批次行本就是 `-d1009` 带后缀格式，源码属漂移，本次对齐回库里已有约定（**不是新格式**）。§2.1 / §3.3 的 `id` 字段说明同步更新。跨域无需手配：平台对 `tcloudbaseapp.com` 静态站自动回 `access-control-allow-origin`（已实测 OPTIONS 预检 204）。`trends` / `favorites` 表结构未动 | 新老数据共存不覆盖；前端数据源标注行内嵌当前公网 URL（截图自证地址） |
 | v0.7.0 | 2026-10-06 | **响应形状统一 + 同步源换轨**：失败响应 `error` 由对象 `{code,message}` 改为**中文字符串**（成功/失败结构对称）；`/api/hot` 排序改为**按热度倒序返回前 20 条**（`heat` 是 TEXT，须解析成数值排，字典序是错的），新增 `data[].heatNum`；`/api/sync` 按附录 F 换轨为**微博 / B站 / 抖音**三平台（原百度源下线），补齐各源必需请求头与字段映射，判重键 `(platform,title,date)` 落地为应用层 upsert（改表 SQL 见 `cloudfunctions/README.md`），新增 60 秒节流与 `force` 参数；前端平台清单补 `bilibili` | **破坏性变更**：消费方读 `error.message` 的地方要改成读 `error` 字符串（前端已兼容两种）；表结构未变 |
 
 ---

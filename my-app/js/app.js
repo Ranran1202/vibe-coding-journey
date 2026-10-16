@@ -393,7 +393,10 @@
         "真实数据 · 来源：" + platformNamesOf(state.items) +
         (state.sourceDate ? " · " + state.sourceDate : "") +
         (state.lastUpdatedAt ? " · 最后更新 " + formatUpdatedAt(state.lastUpdatedAt) : "") +
-        " · 按热度倒序前 " + state.items.length + " 条";
+        " · 按热度倒序前 " + state.items.length + " 条" +
+        // Day 20 截图要求「图里要有完整的公网 URL」：无头浏览器画不出浏览器自己的地址栏，
+        // 所以把 location.href 真实渲染进页面（不是画假地址栏），任何截图都能自证地址。
+        " · 当前地址 " + location.href;
       el.className = "data-source is-live";
     }
   }

@@ -28,7 +28,8 @@
 // 因此这里做**等价的应用层 upsert**：
 //   ① 先按 (platform, date) 参数化查出当天已有行，按 title 建索引；
 //   ② 命中 title → 更新 heat/rank/url；未命中 → 插入新行；
-//   ③ 插入若撞上主键（跨天存在相同 platform-rank 的行），**跳过并计数**，不中断整批。
+//   ③ 插入若撞上主键，**跳过并计数**，不中断整批。
+//      （主键含 dMMDD 日期后缀后跨天不再撞车，这一路现在只在同日重复写入时才走。）
 // 若后续授权改表，把上面的应用层判断换成数据库的
 //   ON CONFLICT ("platform","title","date") DO UPDATE 即可，语义完全等价。
 // 改表 SQL 见 cloudfunctions/README.md「可选增强」。
@@ -144,6 +145,20 @@ function todayInBeijing() {
   return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
+/**
+ * 生成 trends 主键：platform-rank-dMMDD
+ *
+ * ⚠️ Day 20 真机验收抓到的**静默失败**：主键原本写成 platform + "-" + rank（不含日期），
+ * 于是跨天同步时今天的数据会撞上历史行的主键 → 全部 skipped → 「同步成功」但库里一条没多。
+ *   实测证据：2026-10-16 跑同步返回 {"fetched":50,"inserted":0,"updated":0,"skipped":50}，
+ *   库里 2026-10-16 行数 = 0，页面因此空列表。
+ * 而库里 10-09 那批行用的正是 weibo-6-d1009 这种带 dMMDD 后缀的形态 —— 说明约定早就存在，
+ * 只是没回写进源码。这里把主键生成对齐回库里已有的约定，跨天各存各的，不再互相顶掉。
+ */
+function trendId(platform, rank, date) {
+  return platform + "-" + rank + "-d" + String(date).slice(5, 7) + String(date).slice(8, 10);
+}
+
 // 带超时的 fetch：云函数有 20s 上限，上游卡住必须主动放弃
 async function fetchWithTimeout(url, options, timeoutMs) {
   const controller = new AbortController();
@@ -245,7 +260,7 @@ async function upsert(envId, platform, date, items) {
     } else {
       // ③ 未命中 → 插入
       const ins = await trendsRepository.insertTrend(envId, {
-        id: platform + "-" + it.rank,
+        id: trendId(platform, it.rank, date),
         platform: platform,
         rank: it.rank,
         title: it.title,
@@ -258,7 +273,7 @@ async function upsert(envId, platform, date, items) {
         skipped++;
       } else {
         inserted++;
-        byTitle[it.title] = { id: platform + "-" + it.rank }; // 防同批次内标题重复
+        byTitle[it.title] = { id: trendId(platform, it.rank, date) }; // 防同批次内标题重复
       }
     }
   }

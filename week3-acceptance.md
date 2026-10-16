@@ -1,94 +1,234 @@
-# 第 3 周（Day 15–21）周验收表
+# 第 3 周（Day 15–21）周验收表 · 今日热搜
 
-> 验收时间：2026-10-16 20:40（北京时间）
-> 环境：CloudBase 免费体验环境（环境 ID 不入库，见 `cloudbaserc.json`，已 gitignore）
-> 判定口径：PASS = 有可复现证据；FAIL = 缺证据或证据不成立；未执行 = 本周计划外，顺延。
-> 说明：文档中公网地址一律用占位符 `<env-id>`，与 `api-contract.md` §1 的脱敏约定保持一致。
+> 判定只允许三种：**PASS / FAIL / 未执行**。不允许「基本完成」「基本可用」这类模糊表述。
+> 取证时间：2026-10-16 21:10（北京时间）
+> 取证脚本：`bash scripts/week3-verify.sh`（6 项逐条自动取证，可复跑）
+> 环境：CloudBase · 静态托管 + 云函数 + PostgreSQL
 
-| # | 验收项 | 来源 | 判定 | 证据（链接 / 复现命令） |
-|---|---|---|---|---|
-| 1 | 公网可访问：静态托管首页能打开 | Day 15 / Day 20 | **PASS** | <https://<env-id>-1500247035.tcloudbaseapp.com/> — HTTP 200，线上首页 6424 字节，与本地 `my-app/index.html` md5 一致 |
-| 2 | 健康接口公网可达、形状正确 | Day 15 | **PASS** | `curl https://<env-id>.service.tcloudbase.com/api/health` → HTTP 200，`{"ok":true,"service":"hot-search-demo","time":"…"}` |
-| 3 | 接口契约文件存在且随实现同步 | Day 15 / Day 20 | **PASS** | `api-contract.md` 契约版本 **v0.9.0**；§3.1/§3.3/§3.5/§3.6/§3.7 标记 ✅ 已实现 |
-| 4 | 数据模型落地：核心表 + 记录表 | Day 16 | **PASS** | 控制台 / `tcb db execute` 查 `information_schema`： `trends(id, platform, rank, title, heat, url, date, createdAt)`、`favorites(id, trendId, title, platform, note, createdAt, updatedAt)` 两表均在 |
-| 5 | 两张表均有真实数据行 | Day 16 / Day 20 | **PASS** | `trends` 当日 150 条（微博/B站/抖音各 50）；`favorites` 13 条 |
-| 6 | 读接口 GET /api/hot 返回当日真实数据 | Day 17 | **PASS** | `curl …/api/hot?limit=3` → `{ok:true, count:3, source:"synced", date:"2026-10-16"}`，首条「英雄联盟S16世界赛开赛」 |
-| 7 | 读接口 GET /api/favorites 返回收藏列表 | Day 17 | **PASS** | `curl …/api/favorites` → HTTP 200，`count=13` |
-| 8 | 写接口 POST /api/favorites 真实落库 | Day 18 | **PASS** | 检查台写入测试 → **HTTP 201**，`id=fav-idem-day21-demo-walkthrough-001`；回读确认命中 |
-| 9 | 写入判重（重复收藏返回 409） | Day 18 | **PASS** | 对已收藏条目再次 POST → HTTP 409「已经收藏过了」 |
-| 10 | 幂等键重放不多插一行 | Day 18 | **PASS** | 同一 `Idempotency-Key` 连发两次 → 第二次 HTTP 200 且返回**同一个 id** |
-| 11 | 数据访问层重构后接口行为不变 | Day 19 | **PASS** | 三个 GET 接口重构后全部非 5xx；前端回归测试 **51 项全绿** |
-| 12 | 前端零 mock：只从公网接口取数 | Day 20 | **PASS** | `my-app/js/data.js` 已删除；`app.js` 按主机名反推 `https://<env-id>.service.tcloudbase.com` |
-| 13 | 检查台：健康状态 + 真实列表 + 写入入口 | Day 20 | **PASS** | <https://<env-id>-1500247035.tcloudbaseapp.com/#/check> — 显示「✓ 正常」、核心表真实数据、写入测试返回 201 |
-| 14 | 控制台改一行、接口返回跟着变 | Day 17 / Day 20 | **PASS** | 改 `weibo-11-d1016` 标题 → 刷新接口立刻返回新值（验证后已还原） |
-| 15 | CORS 只放行静态托管域名，无 `*` | Day 20 | **PASS** | 带自身 Origin → 回显 ACAO；带 `https://evil.example.com` → 无 ACAO；白名单无 `*` |
-| 16 | 页面无「示例 / Mock」字样 | Day 20 | **FAIL** | 见下方「缺项与 FAIL 明细」第 ① 条 |
-| 17 | 同伴交叉验证三行结论 | Day 21 | **未执行** | 见下方「缺项与 FAIL 明细」第 ② 条 |
-| 18 | `GET /api/platforms`、`GET /api/hot/:id` | 契约 §3.2 §3.4 | 未执行 | 本周计划外（契约中为 📝 占位），顺延 Day 22+ |
-| 19 | `PATCH /api/favorites/:id` | 契约 §3.8 | 未执行 | 本周计划外（契约中为 📝 占位），顺延 Day 22+ |
-| 20 | `DELETE /api/favorites/:id` | 契约 §3.9 | 未执行 | 本周计划外（契约中为 📝 占位），顺延 Day 22+ |
-| 21 | 演示提纲已写出并完整走通一遍 | Day 21 | **PASS** | `bash scripts/day21-demo-walkthrough.sh` → 5 步全 PASS，退出码 0 |
+## 汇总
 
-**合计：PASS 15 项 ｜ FAIL 1 项 ｜ 未执行 5 项（其中 4 项为本周计划外顺延）**
-
----
-
-## 缺项与 FAIL 明细
-
-### ① 【FAIL】收藏列表仍残留 3 条带「示例」标题的种子数据
-
-**现象**：打开公网首页 → 「我的收藏」，列表里出现：
-
-| id | trendId | 标题 |
+| # | 验收项 | 状态 |
 |---|---|---|
-| `fav-1` | `weibo-1` | 示例热搜一：某地迎来初雪刷屏 |
-| `fav-3` | `douyin-3` | 示例热搜三：这部剧大结局引热议 |
-| `fav-4` | `weibo-4` | 示例热搜四：周末周边游攻略走红 |
+| A1 | 建表和种子脚本可重复执行（有 select 证据） | **PASS** |
+| A2 | GET 接口公网可访问且返回真实数据库数据 | **PASS** |
+| A3 | POST 接口完成真实写入并读回 | **PASS** |
+| A4 | 数据访问层重构完成且接口行为不变 | **PASS** |
+| A5-1 | 检查台公网可访问 | **PASS** |
+| A5-2 | 同伴从自己设备打开成功 | **未执行** |
+| A6 | 响应形状与 api-contract.md 一致 | **PASS** |
+| A7 | （附加·如实标记）收藏接口返回值不含示例种子数据 | **FAIL** |
 
-**为什么会发生**：Day 20 的收尾要求是「移除**页面上**所有示例字样」，我当时只清了页面文案（页脚、关于页、来源标注）和内置假数据文件 `js/data.js`，但**没有清数据库里 Day 16 灌进去的种子收藏行**。`GET /api/favorites` 不带日期过滤，这 3 条就会原样出现在页面上——页面改干净了，数据还是脏的。
-
-**修复方案（需你确认后我再执行）**：
-
-```sql
-DELETE FROM favorites WHERE "id" IN ('fav-1','fav-3','fav-4');
-```
-
-删完收藏列表剩 10 条，全部是这几天真实写入的。
-
-**为什么先不动手**：这是删库表数据，属于不可逆操作，按项目规矩要你点头。另外 Day 18 之后 `favorites` 的外键已去掉，删这 3 条不会连带影响 `trends`。
+自动化 6 项：**PASS 6 · FAIL 0 · 未执行 1 · 附加 FAIL 1**
 
 ---
 
-### ② 【未执行】同伴交叉验证——需要一位真人同伴
+## A1　建表和种子脚本可重复执行（有 select 证据）
 
-**状态**：我（AI）已经把交叉验证**脚本化并实跑通过**，但清单要求的「**同伴**给出三行结论」这一步必须由真人完成，我代替不了，如实标记未执行。
+**状态：PASS**
 
-**同伴怎么验（一键）**：
-
+**怎么验证**
 ```bash
-bash scripts/day21-peer-check.sh
+# 连跑两次，第二次必须「Affected rows: 0」且无报错
+tcb db execute -e "$ENV" --sql "$(cat db/schema.sql)"
+tcb db execute -e "$ENV" --sql "$(cat db/schema.sql)"
+tcb db execute -e "$ENV" --sql "$(cat db/seed.sql)"
+tcb db execute -e "$ENV" --sql "$(cat db/seed.sql)"
+
+# select 证据：种子行必须存在
+tcb db execute -e "$ENV" --sql "SELECT 'HIT=' || count(*)::text FROM trends
+  WHERE \"id\" IN ('weibo-1','baidu-2','douyin-3','weibo-4','baidu-5');"
 ```
+判定标准：两次执行均不报错；第二次 0 行改动；SELECT 命中 5 条。
 
-脚本会自动跑完 13 项检查（公网可达、读接口、写接口、幂等、跨域、页面无示例字样），并在末尾打印三行结论：
-
+**证据**
 ```
-可打开：通过 / 未通过 —— …
-可读写：通过 / 未通过 —— …
-无报错：通过 / 未通过 —— …
+schema.sql 两次 = [Affected rows: 0][Affected rows: 0]
+seed.sql   两次 = [Affected rows: 0][Affected rows: 0]
+SELECT 种子 id 命中 = HIT=5
+trends 总数 = 545（执行前后未变）
 ```
+幂等来源：`schema.sql` 全部用 `CREATE TABLE / INDEX IF NOT EXISTS`；`seed.sql` 用 `ON CONFLICT ("id") DO NOTHING`。
 
-**同伴只需把这三行原样发回**即可，不需要装任何依赖（只需 `curl` + `node`）。
+**证据链接**：`db/schema.sql`、`db/seed.sql`、`scripts/week3-verify.sh`（A1 段）
 
-**同伴没法跑脚本时的备选**：直接打开 <https://<env-id>-1500247035.tcloudbaseapp.com/> 和 `/#/check`，按下面三点口述结论——
-① 能不能打开；② 榜单数据是不是今天三个平台的真实热搜、点收藏能不能成功；③ 有没有看到报错。
+⚠️ **本次执行的副作用（如实记录）**：首次跑 `seed.sql` 时受影响 2 行（`favorites` 14 → 16），
+把此前已被删掉的种子收藏 `fav-2`、`fav-5` **又插了回去**。见 A7。
 
 ---
 
-## 说明：关于「今日不做」
+## A2　GET 接口公网可访问且返回真实数据库数据
 
-今天清单要求「不顺手修复与验收无关的问题」。本次改动只有两项与验收直接相关：
+**状态：PASS**
 
-1. 新增脚本（用于产生验收证据，不触碰任何既有代码）
-2. 新增本文档（验收记录）
+**怎么验证**
+```bash
+curl "https://<env-id>.service.tcloudbase.com/api/hot"
+```
+断言四条：HTTP 200；`ok===true`；`source==="synced"`（= 当日同步的真实数据，不是 seed 兜底）；
+`date` = 今天（北京时间）；`data[].title` 不含「示例」字样。
+再逐个平台查一次，确认三平台都能读出：
+```bash
+for p in weibo douyin bilibili; do
+  curl "https://<env-id>.service.tcloudbase.com/api/hot?platform=$p&limit=1"; done
+```
 
-**没有改任何后端代码、没有改表结构、没有改前端逻辑。** 上一条 FAIL ① 我发现了但**没有自作主张去删数据**，等你确认。
+**证据**
+```
+HTTP 200 · ok=true · count=20 · source=synced · date=2026-10-16（今天=2026-10-16）
+默认前 20 条（按热度倒序）：平台 = douyin / weibo，0 条含「示例」
+三平台逐个查：
+  weibo    → platform=weibo    2026-10-16  首条「徐艺洋 孩子是我自己生的」
+  douyin   → platform=douyin   2026-10-16  首条「英雄联盟S16世界赛开赛」
+  bilibili → platform=bilibili 2026-10-16  首条「北京WB 南通Hero久…」
+```
+库内当日实有：微博 50 条 / 抖音 50 条 / B站 50 条。
+说明：默认列表按热度倒序取前 20，B站热度值偏低常被挤出前 20，**必须单独按平台查才能证明它在**。
+
+**证据链接**：
+`https://wb-test01-d6gp6u2pjd3393af3.service.tcloudbase.com/api/hot`
+`https://wb-test01-d6gp6u2pjd3393af3.service.tcloudbase.com/api/hot?platform=bilibili&limit=1`
+
+---
+
+## A3　POST 接口完成真实写入并读回
+
+**状态：PASS**
+
+**怎么验证**
+```bash
+# 先取一条当日真实热搜
+curl "https://<env-id>.service.tcloudbase.com/api/hot?limit=1"
+# 写入（带固定 Idempotency-Key，重复运行不会污染库）
+curl -X POST "https://<env-id>.service.tcloudbase.com/api/favorites" \
+  -H "Content-Type: application/json" -H "Idempotency-Key: week3-verify-20261016" \
+  -d '{"trendId":"<上一步的 id>","platform":"douyin","title":"…","note":"第3周验收写入"}'
+# 读回
+curl "https://<env-id>.service.tcloudbase.com/api/favorites?limit=200"
+```
+判定标准：HTTP 201（新写入）或 200（幂等命中同一条）；且**以 POST 返回的 `data.id` 为准**，
+能在 `GET /api/favorites` 的结果里找到同一条。
+
+**证据**
+```
+HTTP 201（本日首次运行实测）· 重复运行转 200（幂等命中，不新增行）
+读回命中：id=fav-idem-week3-verify-20261016 · trendId=douyin-5-d1016 · title=新闻联播
+幂等键：week3-verify-20261016
+```
+
+⚠️ 这里踩过一个**断言错误**（不是接口 bug）：幂等键复用时接口返回的是**上一次**那条记录，
+如果拿「本次新挑的 trendId」去比对，必然读不回来、误判成 FAIL。
+正确做法是**以 POST 实际返回的 id 为准**去读回。
+
+**证据链接**：`cloudfunctions/favorites/index.js`、`scripts/week3-verify.sh`（A3 段）
+
+---
+
+## A4　数据访问层重构完成且接口行为不变
+
+**状态：PASS**
+
+**怎么验证**
+1. 去头部注释后比对 `shared/*.js` 与各云函数 `lib/` 副本的 md5（直接比 md5 会永远不一致——
+   `scripts/sync-shared.js` 会自动加 4 行「不要手改」头注释）
+2. 在 `hot / favorites / sync` 三个入口文件里 grep 裸 SQL
+3. 行为不变由 A2 + A3 全 PASS 佐证：同样的请求，仍返回契约中的形状与字段
+
+**证据**
+```
+shared/db.js、shared/trendsRepository.js、shared/favoritesRepository.js
+  → hot/lib、sync/lib、favorites/lib 副本：去头部后 md5 全一致（0 处漂移）
+三个云函数入口文件内裸 SQL：0 处（SQL 全部下沉到 Repository）
+A2 / A3 均 PASS → 重构后接口行为未变
+```
+
+**证据链接**：`shared/`、`scripts/sync-shared.js`、`cloudfunctions/*/lib/`
+
+---
+
+## A5　检查台公网可访问 / 同伴从自己设备打开成功
+
+清单里这是**一项**，但它由「可访问」和「同伴打开」两件事组成，后者 AI 无法代替，
+因此**拆成两条如实标记**，不做合并模糊化。
+
+### A5-1　检查台公网可访问 —— **PASS**
+
+**怎么验证**：`curl` 静态托管根路径返回 200，且线上 `index.html` 与本地 md5 一致
+（证明部署的确实是含检查台的最新版本，而不是旧缓存）。
+
+**证据**
+```
+HTTP 200 · 线上 index.html md5=e6ba9c4cf0e0ac9e157e56c7124db76f 与本地一致
+app.js 含 view-check 视图 ×1
+```
+**地址**：`https://wb-test01-d6gp6u2pjd3393af3-1500247035.tcloudbaseapp.com/#/check`
+（首次打开会有 CloudBase 测试域名确认页，点「确定访问」进入）
+
+### A5-2　同伴从自己设备打开成功 —— **未执行**
+
+**怎么验证**：同伴用自己的设备（非本机、最好换一个网络）打开上面的检查台地址，
+按 `week3-peer-check.md` 的三行结论模板回报。
+
+**证据**：需真人执行，AI 代替不了，如实标记未执行。
+自动化替代：`bash scripts/day21-peer-check.sh`（13 项检查 + 三行结论，同伴无需装依赖）。
+
+---
+
+## A6　响应形状与 api-contract.md 一致
+
+**状态：PASS**
+
+**怎么验证**：按契约 §3.3（`GET /api/hot`）与 §3.5（`GET /api/favorites`）的字段表，
+逐键校验**存在性 + 类型**，包括 `heatNum`、`source`、`date` 这些**接口层计算、表里没有**的字段。
+
+**证据**
+```
+GET /api/hot      顶层 5 键：ok, data, count, source, date
+                  行内 9 键：id(string) rank(number) title(string) heat(string)
+                             heatNum(number) platform(string) url(string)
+                             date(string) createdAt(string)   —— 类型全对
+GET /api/favorites 顶层 3 键：ok, data, count
+                  行内 7 键：id, trendId, title, platform, note, createdAt, updatedAt
+```
+
+**证据链接**：`api-contract.md` §3.3 / §3.5（契约版本 v0.9.0）
+
+---
+
+## A7　（附加·如实标记）收藏接口返回值不含示例种子数据 —— **FAIL**
+
+这一项不在清单的 6 项里，但它是 Day 20 收尾要求的直接结果，且**当前不成立**，所以如实记入。
+
+**怎么验证**
+```bash
+curl "https://<env-id>.service.tcloudbase.com/api/favorites?limit=200" \
+  | node -e "…过滤 title 含「示例」的行…"
+```
+
+**证据**
+```
+favorites 表中仍有 5 条种子行，标题为「示例热搜一」～「示例热搜五」：
+  fav-1 / fav-2 / fav-3 / fav-4 / fav-5
+GET /api/favorites 不过滤日期，这 5 条会原样返回 → 收藏页仍会出现「示例」字样
+```
+
+**这是 FAIL，且我在本次验收中让它变更糟了**：Day 21 自查时是 3 条（fav-1/3/4），
+本次为验证 A1「种子脚本可重复执行」而重跑 `seed.sql`，
+`ON CONFLICT DO NOTHING` 把此前缺失的 `fav-2`、`fav-5` **补了回来**，从 3 条变 **5 条**。
+
+**修复 SQL（未执行，等你确认——DELETE 属破坏性操作）**
+```sql
+DELETE FROM favorites WHERE "id" IN ('fav-1','fav-2','fav-3','fav-4','fav-5');
+```
+另：`favorites` 表还堆了 11 条本周各天验证留下的 `fav-idem-*` 测试行，一并清理需你确认。
+
+---
+
+## 说明：为什么没有「基本完成」
+
+本表所有 PASS 项都对应一条**可复跑的命令**和一段**真实输出**，不是「跑通了」这种印象。
+其中 A1、A3 两项在取证过程中各抓到一个**误判**：
+
+- A1 的 select 命中数曾取到空值，却因为没有校验「证据文件是否存在」而显示为通过；
+- A3 的读回断言拿错 id，把幂等重放误判成写入失败。
+
+两个都已修正，方法也写进了脚本注释——静默的假通过比 FAIL 更危险。

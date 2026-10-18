@@ -1,0 +1,15 @@
+{
+  "status": 200,
+  "json": {
+    "ok": true,
+    "data": {
+      "id": "fav-mvdeagnt-1dfm",
+      "trendId": "douyin-7-d1016",
+      "title": "国防部回应菲方多次挑衅行径",
+      "platform": "douyin",
+      "note": "Day22-已修改备注-测试-5883",
+      "createdAt": "2026-10-18T05:38:45.838Z",
+      "updatedAt": "2026-10-18T05:38:46.306Z"
+    }
+  }
+}

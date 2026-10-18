@@ -1,0 +1,136 @@
+{
+  "generatedAt": "2026-10-18T06:49:29.554Z",
+  "base": "https://<env-id>.service.tcloudbase.com",
+  "cases": [
+    {
+      "cls": "输入错 400",
+      "title": "date 写成 13-45（hot）",
+      "live": {
+        "method": "GET",
+        "path": "/api/hot?date=13-45",
+        "status": 400,
+        "body": {
+          "ok": false,
+          "data": null,
+          "error": "date 参数格式不对，应该写成 YYYY-MM-DD，例如 2026-10-06"
+        }
+      }
+    },
+    {
+      "cls": "输入错 400",
+      "title": "limit=abc（drama-episodes）",
+      "live": {
+        "method": "GET",
+        "path": "/api/drama/episodes?limit=abc",
+        "status": 400,
+        "body": {
+          "ok": false,
+          "data": null,
+          "error": "limit 必须是正整数，例如 limit=3"
+        }
+      }
+    },
+    {
+      "cls": "输入错 400",
+      "title": "progress=999（watch-logs，公网实测）",
+      "live": {
+        "method": "PATCH",
+        "path": "/api/drama/watch-logs/log-no-such-999",
+        "status": 400,
+        "body": {
+          "ok": false,
+          "data": null,
+          "error": "progress 必须是 0-100 的整数"
+        }
+      }
+    },
+    {
+      "cls": "不存在 404",
+      "title": "PATCH 不存在的收藏 id",
+      "live": {
+        "method": "PATCH",
+        "path": "/api/favorites/fav-no-such-999",
+        "status": 404,
+        "body": {
+          "ok": false,
+          "data": null,
+          "error": "收藏不存在"
+        }
+      }
+    },
+    {
+      "cls": "不存在 404",
+      "title": "DELETE 不存在的观看记录 id",
+      "live": {
+        "method": "DELETE",
+        "path": "/api/drama/watch-logs/log-no-such-999",
+        "status": 404,
+        "body": {
+          "ok": false,
+          "data": null,
+          "error": "观看记录不存在"
+        }
+      }
+    },
+    {
+      "cls": "服务端错 500",
+      "title": "数据库故障（mock 注入：connection reset by peer）",
+      "live": null,
+      "mocked": {
+        "status": 500,
+        "body": {
+          "ok": false,
+          "data": null,
+          "error": "读取热搜数据失败，请稍后重试"
+        }
+      }
+    },
+    {
+      "cls": "上游错 502",
+      "title": "全部数据源不可达（mock 注入：connect ETIMEDOUT）",
+      "live": null,
+      "mocked": {
+        "status": 502,
+        "body": {
+          "ok": false,
+          "data": null,
+          "error": "数据源暂不可用，请稍后重试"
+        }
+      }
+    }
+  ],
+  "logs": [
+    "[hot] read_throw {\"detail\":\"读取trends失败：Simulated DB failure: connection reset by peer\"}",
+    "[sync] all_sources_failed {\"date\":\"2026-10-16\",\"failed\":[{\"source\":\"weibo\",\"reason\":\"Simulated upstream failure: connect ETIMEDOUT 1.2.3.4:443\"}]}"
+  ],
+  "leakCheck": [
+    {
+      "title": "date 写成 13-45（hot）",
+      "leaked": []
+    },
+    {
+      "title": "limit=abc（drama-episodes）",
+      "leaked": []
+    },
+    {
+      "title": "progress=999（watch-logs，公网实测）",
+      "leaked": []
+    },
+    {
+      "title": "PATCH 不存在的收藏 id",
+      "leaked": []
+    },
+    {
+      "title": "DELETE 不存在的观看记录 id",
+      "leaked": []
+    },
+    {
+      "title": "数据库故障（mock 注入：connection reset by peer）",
+      "leaked": []
+    },
+    {
+      "title": "全部数据源不可达（mock 注入：connect ETIMEDOUT）",
+      "leaked": []
+    }
+  ]
+}

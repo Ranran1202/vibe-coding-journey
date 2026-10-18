@@ -14,9 +14,9 @@
 | 项目英文名（`service` 标识） | **`hot-search-demo`** |
 | 前端 | `my-app` —— **原生 JS 静态站**（`index.html` + `js/*.js`，**无构建步骤**），托管于 CloudBase 静态网站托管 |
 | 后端 | 腾讯云 CloudBase（云开发）· 普通云函数 + HTTP 访问服务 |
-| 数据库 | CloudBase **PostgreSQL 17.11**（真 SQL）。**2026-10-05（Day 16）已建表**。脚本：`db/schema.sql`（建表）、`db/seed.sql`（补种子·幂等）、`db/reset.sql`（重置·先删后建）；执行与验证步骤见 `db/README.md` |
-| 契约版本 | **v0.9.0** |
-| 最后更新 | 2026-10-16 |
+| 数据库 | CloudBase **PostgreSQL 17.11**（真 SQL）。**2026-10-05（Day 16）已建表**。脚本：`db/schema.sql`（建表）、`db/seed.sql`（补种子·幂等）、`db/reset.sql`（重置·先删后建）、`db/add_soft_delete.sql`（Day 22 软删除列）；执行与验证步骤见 `db/README.md` |
+| 契约版本 | **v1.1.0** |
+| 最后更新 | 2026-10-18 |
 | 推导依据 | `my-app/index.html` 的 4 个视图 + `js/app.js` 的数据加载逻辑 + `js/data.js` / `js/config.js` / `js/store.js` 的数据结构 |
 | 关联文档 | `TECH_DESIGN.md`（§4 数据模型、§5 API、§6.2 Phase 2 数据流） |
 
@@ -85,7 +85,7 @@
   （列是 `TIMESTAMPTZ`，数据库按会话时区会吐出 `2026-10-08T19:51:34.442+08:00` 这种带偏移的写法，
   语义等价但格式不统一；**写入接口已在应用层统一转成 `...Z`**，读接口后续一并收敛。）
 - **认证**：当前无用户系统，**接口暂不需要鉴权**；后续加登录时在本节补充。
-- **跨域（CORS）**：`GET/POST /api/favorites` **已开放**（`Access-Control-Allow-Origin: *`，允许 `Idempotency-Key` 头，并响应 `OPTIONS` 预检）——
+- **跨域（CORS）**：`GET/POST/PATCH/DELETE /api/favorites` **已开放**（`Access-Control-Allow-Origin: *`，`Allow-Methods` 含 `GET,POST,PATCH,DELETE,OPTIONS`，允许 `Idempotency-Key` 头，并响应 `OPTIONS` 预检）——
   Day 18 为了能在浏览器里直接验证写入而开；其余接口仍**暂不配置**，由后续 Day 处理。
   ⚠️ 将来加登录态后要收窄成只允许自己的站点域名（当前无用户系统、数据不敏感，`*` 可接受）。
 - **分页**：暂不需要（数据量小）；接入真实数据源后如有需要，在对应接口补 `page` / `pageSize`。
@@ -138,6 +138,8 @@
 | `favorites` | `note` | `"note"` | `TEXT` | DEFAULT `''` | ✅ |
 | `favorites` | `createdAt` | `"createdAt"` | `TIMESTAMPTZ` | DEFAULT `now()` | ✅ |
 | `favorites` | `updatedAt` | `"updatedAt"` | `TIMESTAMPTZ` | DEFAULT `now()` | ✅ |
+| `favorites` | `is_deleted` | `"is_deleted"` | `BOOLEAN` | NOT NULL DEFAULT `false`（Day 22 软删除标记：读接口自动跳过） | ✅ |
+| `favorites` | `deletedAt` | `"deletedAt"` | `TIMESTAMPTZ` | 可空（Day 22 软删除时间，NULL 表示未删除） | ✅ |
 
 > 索引：`idx_trends_date`、`idx_trends_platform`、`idx_favorites_trendid`。
 > **改任何一边都要先改本契约**（见文首规则）。
@@ -180,7 +182,7 @@
 | 表 | 读 | 写 |
 |---|---|---|
 | `trends` | `GET /api/platforms`、`GET /api/hot`、`GET /api/hot/:id` | `POST /api/sync`（从公开源写入） |
-| `favorites` | `GET /api/favorites` ✅ | `POST /api/favorites` ✅（Day 18）、`PATCH /api/favorites/:id` 📝、`DELETE /api/favorites/:id` 📝 |
+| `favorites` | `GET /api/favorites` ✅ | `POST /api/favorites` ✅（Day 18）、`PATCH /api/favorites/:id` ✅（Day 22）、`DELETE /api/favorites/:id` ✅（Day 22 · 软删除） |
 
 ---
 
@@ -321,7 +323,7 @@
 | 场景 | HTTP | body |
 |---|---|---|
 | `date` 格式不对 | `400` | `{ "ok": false, "error": "date 参数格式不对，应该写成 YYYY-MM-DD，例如 2026-10-06" }` |
-| 服务端错误 | `500` | `{ "ok": false, "error": "读取热搜数据失败：……" }` |
+| 服务端错误 | `500` | `{ "ok": false, "data": null, "error": "读取热搜数据失败，请稍后重试" }` |
 
 ---
 
@@ -398,7 +400,7 @@
 
 | 场景 | HTTP | body |
 |---|---|---|
-| 服务端错误 | `500` | `{ "ok": false, "error": "读取收藏列表失败：……" }` |
+| 服务端错误 | `500` | `{ "ok": false, "data": null, "error": "读取收藏列表失败，请稍后重试" }` |
 
 ---
 
@@ -483,9 +485,9 @@
 
 | 场景 | HTTP | body |
 |---|---|---|
-| `source` 非法 | `400` | `{ "ok": false, "error": "不支持的来源，目前只支持：weibo / bilibili / douyin" }` |
-| 公开数据源不可用 | `502` | `{ "ok": false, "error": "数据源暂不可用：……" }`（**库里已有数据保持原样**） |
-| 服务端错误 | `500` | `{ "ok": false, "error": "同步失败：……" }` |
+| `source` 非法 | `400` | `{ "ok": false, "data": null, "error": "不支持的来源，目前只支持：weibo / bilibili / douyin" }` |
+| 公开数据源不可用 | `502` | `{ "ok": false, "data": null, "error": "数据源暂不可用，请稍后重试" }`（**库里已有数据保持原样**；各源原始原因只进日志） |
+| 服务端错误 | `500` | sync 自身不产出 500：单源失败计入 `detail`（整体仍 200），全部源失败为 502；未预期异常由平台兜底 |
 
 ---
 
@@ -541,7 +543,7 @@
 | `trendId` 在 `trends` 表里不存在 | `404` | `{ "ok": false, "error": "没有找到这条热搜（可能链接已失效）" }` |
 | 重复收藏同一条 | `409` | `{ "ok": false, "error": "已经收藏过了" }` |
 | 方法不是 GET/POST | `405` | `{ "ok": false, "error": "只支持 GET 和 POST 两种方法" }` |
-| 服务端错误 | `500` | `{ "ok": false, "error": "收藏失败：……" }` |
+| 服务端错误 | `500` | `{ "ok": false, "data": null, "error": "收藏失败，请稍后重试" }` |
 
 > ✅ **2026-10-08（Day 18）实现记录**
 > - 判重键 = `favorites."trendId"`：一条热搜只允许一条收藏，重复 → `409`。
@@ -554,19 +556,19 @@
 
 ---
 
-### 3.8 `PATCH /api/favorites/:id` —— 修改收藏备注 📝 占位
+### 3.8 `PATCH /api/favorites/:id` —— 修改收藏备注 ✅ 已实现
 
 **用途**：修改某条收藏的备注（对应详情页的「我的备注」输入框）。
 
-**实现计划**：**第 4 周实现**。
+**实现**：`cloudfunctions/favorites/index.js`（`handlePatch`，与 GET/POST 共用云函数，按 `method` 分发；路径 id 从 `event.path` 解析）
 
 **请求**
 
 | 项 | 值 |
 |---|---|
 | 方法 | `PATCH` |
-| 路径 | `/api/favorites/:id`（`:id` 为收藏记录 id） |
-| 请求体 | `{ "note": "新备注" }` |
+| 路径 | `/api/favorites/:id`（`:id` 为收藏记录 id，取自路径最后一段） |
+| 请求体 | `{ "note": "新备注" }`（`note` 必填且为字符串，≤ 200 字；空字符串表示清空备注） |
 
 **成功响应**（HTTP `200`）
 
@@ -577,20 +579,31 @@
 }
 ```
 
-**错误返回**
+> `updatedAt` 会被改写成本次修改时间（与 §2.2 设计一致）。只改 `note` + `updatedAt`，其余字段原样保留。
+
+**错误返回**（`error` 为**中文字符串**，见 §1.2）
 
 | 场景 | HTTP | body |
 |---|---|---|
-| `note` 缺失或非字符串 | `400` | `{ "ok": false, "error": { "code": "BAD_REQUEST", "message": "note 必填且为字符串" } }` |
-| 收藏不存在 | `404` | `{ "ok": false, "error": { "code": "NOT_FOUND", "message": "收藏不存在" } }` |
+| 路径缺 id / 请求体为空 / 不是合法 JSON | `400` | `{ "ok": false, "error": "路径缺少收藏 id，应为 /api/favorites/<id>" }` 等 |
+| `note` 缺失或非字符串 | `400` | `{ "ok": false, "error": "note 必填且必须是字符串" }` |
+| `note` 超长（> 200） | `400` | `{ "ok": false, "error": "note 太长，最多 200 个字符" }` |
+| 收藏不存在（含已软删除） | `404` | `{ "ok": false, "error": "收藏不存在" }` |
+| 服务端错误 | `500` | `{ "ok": false, "data": null, "error": "修改备注失败，请稍后重试" }` |
 
 ---
 
-### 3.9 `DELETE /api/favorites/:id` —— 取消收藏 📝 占位
+### 3.9 `DELETE /api/favorites/:id` —— 取消收藏 ✅ 已实现（★软删除）
 
 **用途**：从收藏中移除一条（对应「★ 已收藏」按钮的取消）。
 
-**实现计划**：**第 4 周实现**。
+**实现**：`cloudfunctions/favorites/index.js`（`handleDelete`）。**软删除**：不打真 `DELETE`，只把 `favorites."is_deleted"` 置 `true`、`deletedAt` 写时间，**数据不真删**。
+
+> **为什么删除比新增更容易出事、这里加了哪几道「确认」**（Day 22 学习点）：
+> ① **精确 id 才删**——只能按路径参数指定单条，绝不批量；
+> ② **删前存在性校验**——查不到就 `404`，不静默成功；
+> ③ **软删除兜底**——只打标记，数据仍在库里，删错了用 `db/recover_favorite.sql` 把 `is_deleted` 翻回 `false` 即可找回。
+> 对调用方完全透明：`GET /api/favorites` 已自动过滤 `is_deleted = false`，表现与真删除一致。
 
 **请求**
 
@@ -603,15 +616,18 @@
 **成功响应**（HTTP `200`）
 
 ```json
-{ "ok": true, "data": { "id": "fav-1", "deleted": true } }
+{ "ok": true, "data": { "id": "fav-1", "deleted": true, "softDeleted": true } }
 ```
 
-**错误返回**
+> `softDeleted: true` 显式告诉调用方「这是软删除，数据还在、可恢复」，区别于将来若有的硬删除。
+
+**错误返回**（`error` 为**中文字符串**，见 §1.2）
 
 | 场景 | HTTP | body |
 |---|---|---|
-| 收藏不存在 | `404` | `{ "ok": false, "error": { "code": "NOT_FOUND", "message": "收藏不存在" } }` |
-| 服务端错误 | `500` | `{ "ok": false, "error": { "code": "INTERNAL_ERROR", "message": "取消失败" } }` |
+| 路径缺 id | `400` | `{ "ok": false, "error": "路径缺少收藏 id，应为 /api/favorites/<id>" }` |
+| 收藏不存在（含已软删除） | `404` | `{ "ok": false, "error": "收藏不存在" }` |
+| 服务端错误 | `500` | `{ "ok": false, "data": null, "error": "取消收藏失败，请稍后重试" }` |
 
 ---
 
@@ -644,6 +660,8 @@
 | v0.6.0 | 2026-10-06 | **GET 读接口落地**：`/api/hot`（§3.3）与 `/api/favorites`（§3.5）由占位转**已实现**，补 `data[].date` / `data[].createdAt` / 顶层 `source` 字段与 `limit` 查询参数；`/api/sync`（§3.6）落地：百度源 URL 修正为 `platform=pc`、请求体缺省语义改为「只同步 baidu」、响应补 `fetched` / `detail[].favoritesRefreshed`；新增 §3.6「已知数据一致性问题」：同步的级联删除会连带清掉指向被删热搜的收藏（5 条种子收藏剩 3 条），Day 18 定修法。**前端另行修复** `Promise.all` 结果未解构导致页面永远显示示例数据的 bug（接口与契约一致、页面取数姿势错） | `GET /api/hot`、`GET /api/favorites`、`POST /api/sync` 正式可用；表结构未变 |
 | v0.8.0 | 2026-10-08 | **POST 写入接口落地**：`POST /api/favorites`（§3.7）由占位转**已实现**，与 §3.5 的 GET 共用云函数、按 `method` 分发；防两类重复提交 —— 业务重复（判重键 `trendId` → `409`「已经收藏过了」）与手抖连点/超时重试（可选请求头 `Idempotency-Key` 编进主键，重复命中 → `200` + 同一条数据，不多插一行）；输入侧挡住空 body / 非 JSON / 缺字段（一次列全）/ 类型不对 / 超长 / platform 不在白名单，`trendId` 在 `trends` 不存在时给 `404` 中文提示（不让外键抛成 500）；写入后**回读一遍**再返回；新增服务端结构化日志与响应头 `X-Request-Id`。§3.6 的级联删除问题**定为方案 b（去掉外键）**，脚本落 `db/fix_favorites_fk.sql`（**未执行**，等你确认）。**未改表结构** | 新增写入能力；GET 侧失败响应同步为字符串 `error`；表结构与既有接口未变 |
 | v0.9.0 | 2026-10-16 | **Day 20 真机验收修复**：`/api/sync` 写入主键由 `platform-rank` 改为 **`platform-rank-dMMDD`**。实测证据：当日同步返回 `{"fetched":50,"inserted":0,"skipped":50}`、库里当日行数为 0，页面因此空列表 —— 跨天同步的新数据全部撞上历史行主键被静默跳过；而库中 10-09 批次行本就是 `-d1009` 带后缀格式，源码属漂移，本次对齐回库里已有约定（**不是新格式**）。§2.1 / §3.3 的 `id` 字段说明同步更新。跨域无需手配：平台对 `tcloudbaseapp.com` 静态站自动回 `access-control-allow-origin`（已实测 OPTIONS 预检 204）。`trends` / `favorites` 表结构未动 | 新老数据共存不覆盖；前端数据源标注行内嵌当前公网 URL（截图自证地址） |
+| v1.0.0 | 2026-10-18 | **第 4 周 · 增删改查闭环**：`PATCH /api/favorites/:id`（§3.8，改备注 note + updatedAt）与 `DELETE /api/favorites/:id`（§3.9，**软删除**）由占位转**已实现**，与 GET/POST 共用 favorites 云函数、按 method + 路径 id 分发；CORS `Allow-Methods` 扩至 `GET,POST,PATCH,DELETE,OPTIONS`；`favorites` 表新增 `is_deleted` / `deletedAt` 两列（`db/add_soft_delete.sql`，幂等），`GET` 自动过滤软删除行，`db/recover_favorite.sql` 提供找回。§2.3 / §2.4 / §3.8 / §3.9 同步更新。**这是「余力加练」软删除的落地，也回答了「删除为什么比新增更容易出事」——三重确认：精确 id、删前存在性校验、软删除可恢复** | 收藏四类操作（增 POST / 删 DELETE / 改 PATCH / 查 GET）全闭环；表结构新增两列（非破坏性，DEFAULT false） |
+| v1.1.0 | 2026-10-18 | **Day 23 安全审计**：错误提示统一为三类——① 用户输入错 400，告诉他改什么（缺哪个字段/格式写成什么样/上限多少）；② 上游网络错 502「数据源暂不可用，请稍后重试」；③ 服务端错 500「……失败，请稍后重试」，**原文只进日志**（`console.error` / `log()` 带 requestId），响应体不再外露英文与堆栈。hot / favorites / sync 的失败响应补齐 `data:null`，恢复 `{ok, data, error}` 三键恒定；修正 sync 错误表中实际不存在的 500 行（单源失败计 detail 整体仍 200，全挂才 502）。同步清理 `week3-acceptance.md` 与 `my-app/tests/mock-api.cjs` 中的环境 ID/租户号。完整审计与自查清单见 `day23-security-audit.md` | 对每个接口发失败请求，响应体必含 `ok:false` / `data:null` / `error`（中文）三键；mock 注入数据库故障实测 500、mock 上游断网实测 502，文案均无原文外露 |
 | v0.7.0 | 2026-10-06 | **响应形状统一 + 同步源换轨**：失败响应 `error` 由对象 `{code,message}` 改为**中文字符串**（成功/失败结构对称）；`/api/hot` 排序改为**按热度倒序返回前 20 条**（`heat` 是 TEXT，须解析成数值排，字典序是错的），新增 `data[].heatNum`；`/api/sync` 按附录 F 换轨为**微博 / B站 / 抖音**三平台（原百度源下线），补齐各源必需请求头与字段映射，判重键 `(platform,title,date)` 落地为应用层 upsert（改表 SQL 见 `cloudfunctions/README.md`），新增 60 秒节流与 `force` 参数；前端平台清单补 `bilibili` | **破坏性变更**：消费方读 `error.message` 的地方要改成读 `error` 字符串（前端已兼容两种）；表结构未变 |
 
 ---

@@ -8,7 +8,10 @@
 //
 // 打桩地址必须与真实部署一致：jsdom 的 url 用 HOST，页面才能从主机名反推出接口域名。
 
-const HOST = "wb-test01-d6gp6u2pjd3393af3-1500247035.tcloudbaseapp.com";
+// 打桩主机名：Day 23 安全审计修复——不再把真实环境 ID 写死在代码里。
+// 本地跑测试时如需对齐真实主机名，用环境变量传入：MOCK_HOST=<你的托管域名> node tests/xxx.cjs
+// 默认值是明显的假域名（demo-env-000000），只为满足「页面从主机名反推接口域名」的代码路径。
+const HOST = process.env.MOCK_HOST || "demo-env-000000.tcloudbaseapp.com";
 
 // 夹具：5 条，覆盖微博 / 抖音 / B站 三个平台（与 js/config.js 的 BOARDS 一致）
 const HOT = [

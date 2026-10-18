@@ -1,0 +1,11 @@
+{
+  "status": 200,
+  "json": {
+    "ok": true,
+    "data": {
+      "id": "fav-mvdeagnt-1dfm",
+      "deleted": true,
+      "softDeleted": true
+    }
+  }
+}

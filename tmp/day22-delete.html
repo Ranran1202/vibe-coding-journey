@@ -1,0 +1,390 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<style>
+ body{font-family:system-ui,"Microsoft YaHei",sans-serif;margin:24px;color:#1f2937;background:#f8fafc}
+ h1{font-size:22px;margin:0 0 4px} .sub{color:#64748b;margin:0 0 18px;font-size:13px}
+ .card{border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin:14px 0;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+ .tag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;background:#eef2ff;color:#4338ca;margin-bottom:8px}
+ table{border-collapse:collapse;width:100%;margin:10px 0;font-size:14px}
+ td,th{border:1px solid #e2e8f0;padding:8px 10px;text-align:left;vertical-align:top}
+ th{background:#f1f5f9;width:160px}
+ .ok{color:#15803d;font-weight:700} .json{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;font-size:12px;overflow:auto;max-height:320px}
+ .note{font-size:12px;color:#64748b;margin-top:6px}
+ .muted{color:#94a3b8}
+</style></head><body>
+<h1>Day 22 证据② · DELETE 后该条不再返回</h1>
+<p class="sub">收藏记录 fav-mvdeagnt-1dfm ｜ 时间 2026-10-18T05:38:47.289Z ｜ 软删除（数据不真删，可恢复）</p>
+<div class="card">
+  <span class="tag">删除前</span>
+  <p>GET /api/favorites 中<b>包含</b>该条（<span class='ok'>存在 ✔</span>）：
+    在 19 条里能找到 id=fav-mvdeagnt-1dfm</p>
+  <pre class='json'>{
+  "ok": true,
+  "data": [
+    {
+      "id": "fav-1",
+      "trendId": "weibo-1",
+      "title": "示例热搜一：某地迎来初雪刷屏",
+      "platform": "weibo",
+      "note": "周末去看看原文",
+      "createdAt": "2026-10-05T01:00:00.000Z",
+      "updatedAt": "2026-10-05T01:00:00.000Z"
+    },
+    {
+      "id": "fav-2",
+      "trendId": "baidu-2",
+      "title": "示例热搜二：新款手机今日正式发布",
+      "platform": "baidu",
+      "note": "",
+      "createdAt": "2026-10-05T01:00:00.000Z",
+      "updatedAt": "2026-10-05T01:00:00.000Z"
+    },
+    {
+      "id": "fav-3",
+      "trendId": "douyin-3",
+      "title": "示例热搜三：这部剧大结局引热议",
+      "platform": "douyin",
+      "note": "据说结局有反转",
+      "createdAt": "2026-10-05T01:00:00.000Z",
+      "updatedAt": "2026-10-05T01:00:00.000Z"
+    },
+    {
+      "id": "fav-4",
+      "trendId": "weibo-4",
+      "title": "示例热搜四：周末周边游攻略走红",
+      "platform": "weibo",
+      "note": "",
+      "createdAt": "2026-10-05T01:00:00.000Z",
+      "updatedAt": "2026-10-05T01:00:00.000Z"
+    },
+    {
+      "id": "fav-5",
+      "trendId": "baidu-5",
+      "title": "示例热搜五：一杯奶茶的热量真相",
+      "platform": "baidu",
+      "note": "同事推荐看的",
+      "createdAt": "2026-10-05T01:00:00.000Z",
+      "updatedAt": "2026-10-05T01:00:00.000Z"
+    },
+    {
+      "id": "fav-idem-day18-browser-demo",
+      "trendId": "weibo-3",
+      "title": "国庆假期返程天气指南",
+      "platform": "weibo",
+      "note": "Day 18 浏览器验证",
+      "createdAt": "2026-10-08T11:58:10.713Z",
+      "updatedAt": "2026-10-08T11:58:10.713Z"
+    },
+    {
+      "id": "fav-idem-day18-final-001",
+      "trendId": "baidu-1",
+      "title": "订单排到2027年！又一行业爆单了",
+      "platform": "baidu",
+      "note": "Day 18 最终验证",
+      "createdAt": "2026-10-08T12:17:42.096Z",
+      "updatedAt": "2026-10-08T12:17:42.096Z"
+    },
+    {
+      "id": "fav-idem-day18-test-001",
+      "trendId": "weibo-2",
+      "title": "诺贝尔物理学奖",
+      "platform": "weibo",
+      "note": "Day 18 写入验证",
+      "createdAt": "2026-10-08T11:51:34.442Z",
+      "updatedAt": "2026-10-08T11:51:34.442Z"
+    },
+    {
+      "id": "fav-idem-day20-regression-01",
+      "trendId": "baidu-4",
+      "title": "年轻人婚礼 不早起不请司仪不办仪式",
+      "platform": "baidu",
+      "note": "Day 20 回归固定行",
+      "createdAt": "2026-10-08T13:26:40.699Z",
+      "updatedAt": "2026-10-08T13:26:40.699Z"
+    },
+    {
+      "id": "fav-idem-day21-demo-walkthrough-001",
+      "trendId": "douyin-3-d1016",
+      "title": "中国方案赋能全球算力",
+      "platform": "douyin",
+      "note": "Day21 演示走通写入",
+      "createdAt": "2026-10-16T12:43:12.063Z",
+      "updatedAt": "2026-10-16T12:43:12.063Z"
+    },
+    {
+      "id": "fav-idem-my-first-fav-01",
+      "trendId": "baidu-3",
+      "title": "国庆假期返程9个小贴士请收好",
+      "platform": "baidu",
+      "note": "我自己的第一条收藏",
+      "createdAt": "2026-10-08T12:34:12.319Z",
+      "updatedAt": "2026-10-08T12:34:12.319Z"
+    },
+    {
+      "id": "fav-idem-peer-1792154261-24679",
+      "trendId": "douyin-1-d1016",
+      "title": "英雄联盟S16世界赛开赛",
+      "platform": "douyin",
+      "note": "同伴交叉验证写入测试",
+      "createdAt": "2026-10-16T12:37:43.463Z",
+      "updatedAt": "2026-10-16T12:37:43.463Z"
+    },
+    {
+      "id": "fav-idem-peer-1792154320-9696",
+      "trendId": "douyin-2-d1016",
+      "title": "天水幼儿血铅案一审宣判",
+      "platform": "douyin",
+      "note": "同伴交叉验证写入测试",
+      "createdAt": "2026-10-16T12:38:42.863Z",
+      "updatedAt": "2026-10-16T12:38:42.863Z"
+    },
+    {
+      "id": "fav-idem-peer-20261016",
+      "trendId": "douyin-4-d1016",
+      "title": "古早感美式复古秋冬穿搭",
+      "platform": "douyin",
+      "note": "同伴交叉验证写入测试",
+      "createdAt": "2026-10-16T12:46:20.703Z",
+      "updatedAt": "2026-10-16T12:46:20.703Z"
+    },
+    {
+      "id": "fav-idem-week3-verify-20261016",
+      "trendId": "douyin-5-d1016",
+      "title": "新闻联播",
+      "platform": "douyin",
+      "note": "第3周验收写入",
+      "createdAt": "2026-10-16T13:05:51.463Z",
+      "updatedAt": "2026-10-16T13:05:51.463Z"
+    },
+    {
+      "id": "fav-muzjm7ij-8web",
+      "trendId": "baidu-2",
+      "title": "回归测试用的一条收藏",
+      "platform": "baidu",
+      "note": "smoke-test",
+      "createdAt": "2026-10-08T12:59:05.429Z",
+      "updatedAt": "2026-10-08T12:59:05.429Z"
+    },
+    {
+      "id": "fav-mvay1vgq-znqe",
+      "trendId": "weibo-11-d1016",
+      "title": "徐艺洋 孩子是我自己生的",
+      "platform": "weibo",
+      "note": "检查台写入测试",
+      "createdAt": "2026-10-16T12:28:38.940Z",
+      "updatedAt": "2026-10-16T12:28:38.940Z"
+    },
+    {
+      "id": "fav-mvde7sr6-op8w",
+      "trendId": "douyin-6-d1016",
+      "title": "淡人早秋穿搭",
+      "platform": "douyin",
+      "note": "（初始）待修改的备注",
+      "createdAt": "2026-10-18T05:36:41.541Z",
+      "updatedAt": "2026-10-18T05:36:41.541Z"
+    },
+    {
+      "id": "fav-mvdeagnt-1dfm",
+      "trendId": "douyin-7-d1016",
+      "title": "国防部回应菲方多次挑衅行径",
+      "platform": "douyin",
+      "note": "Day22-已修改备注-测试-5883",
+      "createdAt": "2026-10-18T05:38:45.838Z",
+      "updatedAt": "2026-10-18T05:38:46.306Z"
+    }
+  ],
+  "count": 19
+}</pre>
+</div>
+<div class="card">
+  <span class="tag">删除后</span>
+  <p>DELETE /api/favorites/fav-mvdeagnt-1dfm → HTTP 200 <pre class='json'>{
+  "ok": true,
+  "data": {
+    "id": "fav-mvdeagnt-1dfm",
+    "deleted": true,
+    "softDeleted": true
+  }
+}</pre></p>
+  <p>GET /api/favorites 中<b>已不含</b>该条（<span class='ok'>消失 ✔</span>）：
+     列表从 19 条变为 18 条，且找不到 id=fav-mvdeagnt-1dfm</p>
+  <pre class='json'>{
+  "ok": true,
+  "data": [
+    {
+      "id": "fav-1",
+      "trendId": "weibo-1",
+      "title": "示例热搜一：某地迎来初雪刷屏",
+      "platform": "weibo",
+      "note": "周末去看看原文",
+      "createdAt": "2026-10-05T01:00:00.000Z",
+      "updatedAt": "2026-10-05T01:00:00.000Z"
+    },
+    {
+      "id": "fav-2",
+      "trendId": "baidu-2",
+      "title": "示例热搜二：新款手机今日正式发布",
+      "platform": "baidu",
+      "note": "",
+      "createdAt": "2026-10-05T01:00:00.000Z",
+      "updatedAt": "2026-10-05T01:00:00.000Z"
+    },
+    {
+      "id": "fav-3",
+      "trendId": "douyin-3",
+      "title": "示例热搜三：这部剧大结局引热议",
+      "platform": "douyin",
+      "note": "据说结局有反转",
+      "createdAt": "2026-10-05T01:00:00.000Z",
+      "updatedAt": "2026-10-05T01:00:00.000Z"
+    },
+    {
+      "id": "fav-4",
+      "trendId": "weibo-4",
+      "title": "示例热搜四：周末周边游攻略走红",
+      "platform": "weibo",
+      "note": "",
+      "createdAt": "2026-10-05T01:00:00.000Z",
+      "updatedAt": "2026-10-05T01:00:00.000Z"
+    },
+    {
+      "id": "fav-5",
+      "trendId": "baidu-5",
+      "title": "示例热搜五：一杯奶茶的热量真相",
+      "platform": "baidu",
+      "note": "同事推荐看的",
+      "createdAt": "2026-10-05T01:00:00.000Z",
+      "updatedAt": "2026-10-05T01:00:00.000Z"
+    },
+    {
+      "id": "fav-idem-day18-browser-demo",
+      "trendId": "weibo-3",
+      "title": "国庆假期返程天气指南",
+      "platform": "weibo",
+      "note": "Day 18 浏览器验证",
+      "createdAt": "2026-10-08T11:58:10.713Z",
+      "updatedAt": "2026-10-08T11:58:10.713Z"
+    },
+    {
+      "id": "fav-idem-day18-final-001",
+      "trendId": "baidu-1",
+      "title": "订单排到2027年！又一行业爆单了",
+      "platform": "baidu",
+      "note": "Day 18 最终验证",
+      "createdAt": "2026-10-08T12:17:42.096Z",
+      "updatedAt": "2026-10-08T12:17:42.096Z"
+    },
+    {
+      "id": "fav-idem-day18-test-001",
+      "trendId": "weibo-2",
+      "title": "诺贝尔物理学奖",
+      "platform": "weibo",
+      "note": "Day 18 写入验证",
+      "createdAt": "2026-10-08T11:51:34.442Z",
+      "updatedAt": "2026-10-08T11:51:34.442Z"
+    },
+    {
+      "id": "fav-idem-day20-regression-01",
+      "trendId": "baidu-4",
+      "title": "年轻人婚礼 不早起不请司仪不办仪式",
+      "platform": "baidu",
+      "note": "Day 20 回归固定行",
+      "createdAt": "2026-10-08T13:26:40.699Z",
+      "updatedAt": "2026-10-08T13:26:40.699Z"
+    },
+    {
+      "id": "fav-idem-day21-demo-walkthrough-001",
+      "trendId": "douyin-3-d1016",
+      "title": "中国方案赋能全球算力",
+      "platform": "douyin",
+      "note": "Day21 演示走通写入",
+      "createdAt": "2026-10-16T12:43:12.063Z",
+      "updatedAt": "2026-10-16T12:43:12.063Z"
+    },
+    {
+      "id": "fav-idem-my-first-fav-01",
+      "trendId": "baidu-3",
+      "title": "国庆假期返程9个小贴士请收好",
+      "platform": "baidu",
+      "note": "我自己的第一条收藏",
+      "createdAt": "2026-10-08T12:34:12.319Z",
+      "updatedAt": "2026-10-08T12:34:12.319Z"
+    },
+    {
+      "id": "fav-idem-peer-1792154261-24679",
+      "trendId": "douyin-1-d1016",
+      "title": "英雄联盟S16世界赛开赛",
+      "platform": "douyin",
+      "note": "同伴交叉验证写入测试",
+      "createdAt": "2026-10-16T12:37:43.463Z",
+      "updatedAt": "2026-10-16T12:37:43.463Z"
+    },
+    {
+      "id": "fav-idem-peer-1792154320-9696",
+      "trendId": "douyin-2-d1016",
+      "title": "天水幼儿血铅案一审宣判",
+      "platform": "douyin",
+      "note": "同伴交叉验证写入测试",
+      "createdAt": "2026-10-16T12:38:42.863Z",
+      "updatedAt": "2026-10-16T12:38:42.863Z"
+    },
+    {
+      "id": "fav-idem-peer-20261016",
+      "trendId": "douyin-4-d1016",
+      "title": "古早感美式复古秋冬穿搭",
+      "platform": "douyin",
+      "note": "同伴交叉验证写入测试",
+      "createdAt": "2026-10-16T12:46:20.703Z",
+      "updatedAt": "2026-10-16T12:46:20.703Z"
+    },
+    {
+      "id": "fav-idem-week3-verify-20261016",
+      "trendId": "douyin-5-d1016",
+      "title": "新闻联播",
+      "platform": "douyin",
+      "note": "第3周验收写入",
+      "createdAt": "2026-10-16T13:05:51.463Z",
+      "updatedAt": "2026-10-16T13:05:51.463Z"
+    },
+    {
+      "id": "fav-muzjm7ij-8web",
+      "trendId": "baidu-2",
+      "title": "回归测试用的一条收藏",
+      "platform": "baidu",
+      "note": "smoke-test",
+      "createdAt": "2026-10-08T12:59:05.429Z",
+      "updatedAt": "2026-10-08T12:59:05.429Z"
+    },
+    {
+      "id": "fav-mvay1vgq-znqe",
+      "trendId": "weibo-11-d1016",
+      "title": "徐艺洋 孩子是我自己生的",
+      "platform": "weibo",
+      "note": "检查台写入测试",
+      "createdAt": "2026-10-16T12:28:38.940Z",
+      "updatedAt": "2026-10-16T12:28:38.940Z"
+    },
+    {
+      "id": "fav-mvde7sr6-op8w",
+      "trendId": "douyin-6-d1016",
+      "title": "淡人早秋穿搭",
+      "platform": "douyin",
+      "note": "（初始）待修改的备注",
+      "createdAt": "2026-10-18T05:36:41.541Z",
+      "updatedAt": "2026-10-18T05:36:41.541Z"
+    }
+  ],
+  "count": 18
+}</pre>
+</div>
+<div class="card">
+  <span class="tag">删错可找回（软删除证据）</span>
+  <p>DELETE 没有真删行，只是把 <code>is_deleted</code> 置 true。直接查库证明这条记录还在：</p>
+  <pre class="json">SELECT "id","is_deleted","deletedAt" FROM favorites WHERE "id"='fav-mvdeagnt-1dfm';
+-- 结果：
+--  id                  | is_deleted | deletedAt
+--  fav-mvdeagnt-1dfm   | true       | 2026-10-18 13:38:47+08</pre>
+  <p class="note">找回方法：把标记翻回 false 即可（见 db/recover_favorite.sql）：
+    <code>UPDATE favorites SET "is_deleted"=false,"deletedAt"=null WHERE "id"='fav-mvdeagnt-1dfm';</code>
+    —— 之后 GET /api/favorites 又会重新看到它。</p>
+</div>
+</body></html>

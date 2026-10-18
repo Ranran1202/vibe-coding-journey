@@ -46,7 +46,12 @@
 // ============================================================
 // 四、响应形状（与 /api/hot 一致）
 //   成功：{ "ok": true,  "data": { ... }, "count": N }
-//   失败：{ "ok": false, "error": "人能看懂的中文说明" }
+//   失败：{ "ok": false, "data": null, "error": "人能看懂的中文说明" }（Day 23 补齐 data 键）
+//   Day 23 安全审计：三类错误分开处理——
+//     ① 用户输入错 → 400，告诉他改什么（来源不在白名单 / date 格式不对 /  body 不是 JSON）；
+//     ② 上游网络错 → 502「数据源暂不可用，请稍后重试」，各源原始原因只进日志；
+//     ③ 服务端错   → 各源按 failed 计，用户看通用人话，原文只进 console.error。
+//   已知上游症状（403/412/空列表等）的中文说明仍会放进 detail[].reason，便于手动排查。
 // ============================================================
 
 "use strict";
@@ -131,7 +136,7 @@ function fail(statusCode, message) {
   return {
     statusCode: statusCode,
     headers: { "Content-Type": "application/json; charset=utf-8" },
-    body: JSON.stringify({ ok: false, error: message }),
+    body: JSON.stringify({ ok: false, data: null, error: message }),
   };
 }
 
@@ -367,7 +372,13 @@ exports.main = async (event, context) => {
   }, 0);
 
   if (failed.length === detail.length) {
-    return fail(502, "数据源暂不可用：" + failed.map(function (d) { return d.reason; }).join("；"));
+    // Day 23 安全审计：全部源都失败 → 上游网络/接口错（第二类）。
+    // 各源原始原因（可能含英文）只进日志，前端只拿到一句通用人话。
+    console.error(
+      "[sync] all_sources_failed " +
+        JSON.stringify({ date: date, failed: failed.map(function (d) { return { source: d.source, reason: d.reason }; }) })
+    );
+    return fail(502, "数据源暂不可用，请稍后重试");
   }
 
   return ok({

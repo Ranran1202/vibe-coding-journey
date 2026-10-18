@@ -943,6 +943,73 @@
       });
   }
 
+  // ④ 删除测试：删除比新增更容易出事，所以加二次确认。
+  //   先 GET 列表找到「写入测试」留下的那条（note 含“检查台”）→ 弹窗讲清删哪条 → 确认后才 DELETE
+  //   → 删完再 GET 一次，证明它真的不再返回。
+  function runDeleteTest() {
+    var out = document.getElementById("checkDeleteOut");
+    var btn = document.getElementById("btnDeleteTest");
+    if (!out || !btn) return;
+
+    var base = currentApiBase();
+    if (!base) { out.textContent = "未连接到云端接口（请通过静态托管的公网地址访问）"; return; }
+
+    btn.disabled = true;
+    btn.textContent = "查找中…";
+    out.textContent = "GET /api/favorites …（找写入测试留下的那条）";
+
+    getJson(base + "/api/favorites", 8000)
+      .then(function (j) {
+        var list = (j && j.data) || [];
+        var target = null;
+        for (var i = 0; i < list.length; i++) {
+          if (String(list[i].note || "").indexOf("检查台") !== -1) { target = list[i]; break; }
+        }
+        if (!target) {
+          out.textContent = "没找到写入测试留下的收藏（note 含“检查台”）。请先点上面的「写入一条收藏测试」。";
+          return null;
+        }
+        // 二次确认：把要删的是哪一条讲清楚，防止误删
+        var msg =
+          "确认删除这条收藏吗？\n\n" +
+          "id：" + target.id + "\n" +
+          "标题：" + target.title + "\n" +
+          "平台：" + target.platform + "\n" +
+          "备注：" + (target.note || "") + "\n\n" +
+          "（软删除：数据仍在库里，可用 db/recover_favorite.sql 找回）";
+        if (!window.confirm(msg)) {
+          out.textContent = "已取消删除（未调用 DELETE 接口）。";
+          return null;
+        }
+        out.textContent = "DELETE /api/favorites/" + target.id + " …";
+        btn.textContent = "删除中…";
+        return fetch(base + "/api/favorites/" + encodeURIComponent(target.id), { method: "DELETE" })
+          .then(function (r) {
+            return r.text().then(function (t) { return { status: r.status, text: t }; });
+          })
+          .then(function (res) {
+            var pretty = res.text;
+            try { pretty = JSON.stringify(JSON.parse(res.text), null, 2); } catch (e) { /* 非 JSON 原样展示 */ }
+            out.textContent = "HTTP " + res.status + "\n" + pretty;
+            // 删完再拉一次列表，确认它真的不再返回
+            return getJson(base + "/api/favorites", 8000).then(function (j2) {
+              var still = ((j2 && j2.data) || []).some(function (x) { return x.id === target.id; });
+              out.textContent +=
+                "\n\n删除后复查 GET /api/favorites：该条" +
+                (still ? "仍在列表中（异常）" : "已不再返回 ✓") +
+                "，当前共 " + ((j2 && j2.count) || 0) + " 条。";
+            });
+          });
+      })
+      .catch(function (err) {
+        out.textContent = "删除失败：" + String((err && err.message) || err);
+      })
+      .then(function () {
+        btn.disabled = false;
+        btn.textContent = "删除测试（需二次确认）";
+      });
+  }
+
   function init() {
     var refreshBtn = document.getElementById("btnRefresh");
     if (refreshBtn) refreshBtn.addEventListener("click", function () { refresh(); });
@@ -950,6 +1017,10 @@
     // 检查台：收藏写入测试入口
     var writeBtn = document.getElementById("btnWriteTest");
     if (writeBtn) writeBtn.addEventListener("click", function () { runWriteTest(); });
+
+    // 检查台：收藏删除测试入口（带二次确认）
+    var deleteBtn = document.getElementById("btnDeleteTest");
+    if (deleteBtn) deleteBtn.addEventListener("click", function () { runDeleteTest(); });
 
     // 余力加练：返回上一页（浏览器历史后退）
     var backBtn = document.getElementById("btnBack");

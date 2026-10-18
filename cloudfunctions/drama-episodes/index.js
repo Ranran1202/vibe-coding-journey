@@ -70,6 +70,8 @@ exports.main = async (event, context) => {
     const data = await episodesRepository.listEpisodes(envId, { status: status });
     return ok(limit ? data.slice(0, limit) : data);
   } catch (err) {
-    return fail(500, "读取剧集数据失败：" + String((err && err.message) || err));
+    // Day 23 安全审计：原文进日志（给开发者定位），用户只看到通用人话（不透出英文/堆栈）
+    console.error("[drama-episodes] read_throw " + JSON.stringify({ detail: String((err && err.message) || err) }));
+    return fail(500, "读取剧集数据失败，请稍后重试");
   }
 };

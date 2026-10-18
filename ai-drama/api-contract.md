@@ -6,8 +6,8 @@
 | 项 | 值 |
 |---|---|
 | 项目 | `ai-drama` —— AI 漫剧展示站（原生 JS 静态站 + CloudBase 云函数） |
-| 契约版本 | **v0.1.0** |
-| 最后更新 | 2026-10-06 |
+| 契约版本 | **v0.2.1** |
+| 最后更新 | 2026-10-18 |
 | 数据库 | CloudBase **PostgreSQL 17.11**；建表 `db/drama_schema.sql`、种子 `db/drama_seed.sql`（均幂等） |
 | 关联文档 | `ai-drama/TECH_DESIGN.md`（§三 数据对象、§4.2 方案 B 的 API 列表） |
 
@@ -47,8 +47,8 @@
 | 失败 | `{ "ok": false, "data": null, "error": "人能看懂的中文说明" }` |
 
 - `error` 是**字符串**（与今日热搜线 v0.7.0 的约定一致），可直接展示给用户；成功时恒为 `null`。
-- 失败语义由 **HTTP 状态码**承担：`400` 参数错、`500` 服务端错。
-- 列表类接口额外给 `count`（本次返回条数）。
+- 失败语义由 **HTTP 状态码**承担：`400` 参数错、`404` 记录不存在、`405` 方法不支持、`500` 服务端错。
+- 列表类接口额外给 `count`（本次返回条数）；单对象响应（PATCH/DELETE）**不带** `count`。
 
 ### 1.3 约束
 
@@ -141,7 +141,7 @@
 | `count` | number | 本次返回条数 |
 
 **失败**：`400`（`limit` 不是正整数）/ `500`（读取失败），
-形如 `{ "ok": false, "data": null, "error": "读取剧集数据失败：……" }`。
+形如 `{ "ok": false, "data": null, "error": "读取剧集数据失败，请稍后重试" }`。
 
 ---
 
@@ -179,8 +179,94 @@
 
 ---
 
+### 3.3 `PATCH /api/drama/watch-logs/:id` —— 修改一条观看记录 ✅ 已实现
+
+> **实现记录（2026-10-18）**
+> - 云函数：`cloudfunctions/drama-watchlogs/`（Nodejs18.15），HTTP 路由 `/api/drama/watch-logs`。
+> - 前置修复：表原先只授了 `anon` 角色 SELECT，PATCH 报 `permission denied`；已执行
+>   `GRANT UPDATE, DELETE ON TABLE drama_watch_logs TO anon`（存档 `db/grant_watchlogs_write.sql`）。
+> - 实测（公网，一次性测试记录 `log-day22-test`）：`{"progress":30,...}` → PATCH `{"progress":88,"device":"测试后·Chrome / Windows"}`
+>   → `200` + 返回更新后整行；DB 直查 `progress` 已由 30 变 88、`device` 已变；GET 列表同步返回新值。
+> - 对不存在 id：`404` + `"观看记录不存在"`，不崩、不裸报 500。
+
+**用途**：打卡记错了能改——进度填错、设备标错，用这条接口修正（对应 checkins 的「改一次」）。
+
+| 项 | 值 |
+|---|---|
+| 方法 / 路径 | `PATCH /api/drama/watch-logs/<id>` |
+| 可改字段 | `progress`（0–100 整数，即「完成状态」）；`device`（字符串，兼作来源/备注）。**至少传一个** |
+| 不可改字段 | `id` / `episodeId` / `viewer` / `watchedAt`（传了也忽略，契约层面不接受） |
+
+**请求示例**
+
+```json
+{ "progress": 88, "device": "测试后·Chrome / Windows" }
+```
+
+**成功响应**（`200`，返回更新后的整行，**不带** `count`）
+
+```json
+{
+  "ok": true,
+  "data": {
+    "id": "log-day22-test", "episodeId": "ep01", "viewer": "day22-tester",
+    "progress": 88, "device": "测试后·Chrome / Windows",
+    "watchedAt": "2026-10-22T10:00:00+08:00"
+  },
+  "error": null
+}
+```
+
+**失败**
+
+| 状态码 | error | 触发条件 |
+|---|---|---|
+| `400` | `路径缺少记录 id，应为 /api/drama/watch-logs/<id>` | URL 没带 id |
+| `400` | `请求体不能为空，请传 JSON，例如 {"progress":88,"device":"Edge / Windows"}` | 没传请求体或不是合法 JSON |
+| `400` | `没有可修改的字段，目前只支持修改 progress（0-100）和 device` | 两个可改字段都没传 |
+| `400` | `progress 必须是 0-100 的整数` | progress 越界或非整数 |
+| `400` | `device 必须是字符串` | device 传了非字符串 |
+| `404` | `观看记录不存在` | id 在表中不存在（**先查后改**，顺带防止改错行） |
+| `500` | `修改观看记录失败，请稍后重试` | 服务端异常（原文只进日志） |
+
+---
+
+### 3.4 `DELETE /api/drama/watch-logs/:id` —— 删除一条观看记录 ✅ 已实现
+
+> **实现记录（2026-10-18）**
+> - 实测（公网，同一测试记录）：DELETE 前 DB 共 7 条 → `DELETE /api/drama/watch-logs/log-day22-test`
+>   → `200` + `{"id":"log-day22-test","deleted":true}`；DELETE 后 DB 共 6 条、按 id 查为空、GET 列表不再返回。
+> - 对不存在 id：`404` + `"观看记录不存在"`。
+> - **硬删除**：本线未选软删除（表无 `is_deleted` 列），记录真删、不可找回；今日热搜线 favorites 则为软删除可恢复。
+
+**用途**：删掉打错的卡（对应 checkins 的「删一次」）。
+
+| 项 | 值 |
+|---|---|
+| 方法 / 路径 | `DELETE /api/drama/watch-logs/<id>` |
+
+**成功响应**（`200`，**不带** `count`）
+
+```json
+{ "ok": true, "data": { "id": "log-day22-test", "deleted": true }, "error": null }
+```
+
+**失败**
+
+| 状态码 | error | 触发条件 |
+|---|---|---|
+| `400` | `路径缺少记录 id，应为 /api/drama/watch-logs/<id>` | URL 没带 id |
+| `404` | `观看记录不存在` | id 在表中不存在（**先查后删**，删不存在的东西不静默成功） |
+| `500` | `删除观看记录失败，请稍后重试` | 服务端异常（原文只进日志） |
+
+> 方法不受支持时（如 PUT）：`405` + `"只支持 GET、PATCH、DELETE 三种方法"`。
+
+---
+
 ## 4. 变更记录
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
 | v0.1.0 | 2026-10-06 | 建立漫剧线契约。按「数据从哪来」三问判定为**用户产出 → 必须入库**，新建核心表 `drama_episodes` 与记录表 `drama_watch_logs`，登记并**实现**两个 GET 接口（`GET /api/drama/episodes`、`GET /api/drama/watch-logs`），统一响应形状 `{ok, data, error}`。 |
+| v0.2.0 | 2026-10-18 | 补齐记录表（checkins）的改/删：新增 **`PATCH /api/drama/watch-logs/:id`**（可改 `progress`/`device`）与 **`DELETE /api/drama/watch-logs/:id`**（硬删除）并标记已实现；失败语义补 `404`（记录不存在）/ `405`（方法不支持）；授权 `anon` 角色 UPDATE/DELETE（`db/grant_watchlogs_write.sql`）；公网实测 PATCH 生效、DELETE 后 DB 7→6 条、不存在 id 返回中文 404。 |
+| v0.2.1 | 2026-10-18 | **Day 23 安全审计**：drama-episodes 与 drama-watchlogs 的 500 文案由「……失败：<原文>」统一改为「……失败，请稍后重试」，原文只进 `console.error` 日志；新增 `ai-drama/.env.example`（云函数不需要 .env，ComfyUI 脚本用 `COMFY_URL` 覆盖默认地址）。完整审计与自查清单见 `day23-security-audit.md` | 同左：失败响应三键恒定、文案中文、mock 注入实测无原文外露 |

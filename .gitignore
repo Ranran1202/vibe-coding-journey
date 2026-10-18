@@ -2,6 +2,10 @@
 .env
 .env.*
 *.env
+# 例外：.env.example 是密钥治理的模板文件，不含真实值，必须能提交（Day 23 修复：
+# 上面的 .env.* 会把 .env.example 一起误杀，导致模板进不了仓库）
+!.env.example
+!ai-drama/.env.example
 
 # CloudBase 部署配置：含环境 ID，属敏感信息，只留在本地
 cloudbaserc.json
@@ -26,6 +30,12 @@ venv/
 *.sqlite
 *.sqlite3
 *.db
+
+# ===== AI 漫剧：视频大文件不进仓库（外链嵌入，见 AGENTS.md）=====
+ai-drama/assets/video/
+*.mp4
+*.mov
+*.webm
 
 # ===== 日志 =====
 *.log

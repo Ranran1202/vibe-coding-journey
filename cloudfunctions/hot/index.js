@@ -7,9 +7,11 @@
 // 一、对外契约（统一形状，成功/失败结构对称）
 //
 //   成功：{ "ok": true,  "data": [ ...20 条... ], "count": 20, "source": "...", "date": "..." }
-//   失败：{ "ok": false, "error": "人能看懂的中文说明" }        ← error 是**字符串**，不是对象
+//   失败：{ "ok": false, "data": null, "error": "人能看懂的中文说明" }  ← 三键恒定（Day 23 补齐 data）
 //
-//   失败时 HTTP 状态码也一起给：参数错 400、数据库错 500。
+//   失败时 HTTP 状态码也一起给：参数错 400、方法不允许 405、数据库错 500。
+//   Day 23 安全审计：500 不再把数据库原始报错（可能是英文）透传给前端，
+//   原文只进 console.error 日志，前端只看到「读取热搜数据失败，请稍后重试」。
 // ============================================================
 //
 // ============================================================
@@ -60,7 +62,7 @@ function fail(statusCode, message) {
   return {
     statusCode: statusCode,
     headers: { "Content-Type": "application/json; charset=utf-8" },
-    body: JSON.stringify({ ok: false, error: message }),
+    body: JSON.stringify({ ok: false, data: null, error: message }),
   };
 }
 
@@ -122,7 +124,17 @@ function withHeatNumber(row) {
  */
 exports.main = async (event, context) => {
   const envId = (context && context.namespace) || "";
-  const query = (event && event.queryStringParameters) || {};
+  const e = event || {};
+  const method = String(e.httpMethod || e.method || "GET").toUpperCase();
+  const query = e.queryStringParameters || {};
+
+  // ---- 0. 方法分发（Day 23）：这是只读接口，别的方法一律 405 ----
+  if (method === "OPTIONS") {
+    return { statusCode: 204, headers: { "Content-Type": "application/json; charset=utf-8" }, body: "" };
+  }
+  if (method !== "GET") {
+    return fail(405, "只支持 GET 一种方法");
+  }
 
   // ---- 1. 参数校验：不对就明确报 400，而不是静默返回空列表 ----
   const dateRaw = query.date;
@@ -170,6 +182,8 @@ exports.main = async (event, context) => {
       date: date,
     });
   } catch (err) {
-    return fail(500, "读取热搜数据失败：" + String((err && err.message) || err));
+    // Day 23：原文进日志（给开发者定位），用户只看到通用人话（不透出英文/堆栈）
+    console.error("[hot] read_throw " + JSON.stringify({ detail: String((err && err.message) || err) }));
+    return fail(500, "读取热搜数据失败，请稍后重试");
   }
 };

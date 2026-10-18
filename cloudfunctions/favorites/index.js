@@ -1,6 +1,8 @@
 // cloudfunctions/favorites/index.js
 // Day 17 · GET  /api/favorites  —— 读收藏列表
 // Day 18 · POST /api/favorites  —— 新增收藏（第一个写入接口）
+// Day 22 · PATCH /api/favorites/:id —— 改收藏备注（软更新的典型：只动 note + updatedAt）
+// Day 22 · DELETE /api/favorites/:id —— 取消收藏（★软删除：只打 is_deleted 标记，不真删，删错可找回）
 // Day 19 · 重构：把「连库 + 查库」搬到 shared/db.js，本文件只留参数校验与业务判断
 //
 // ============================================================
@@ -15,8 +17,22 @@
 //     成功 201：{ "ok": true, "data": { id, trendId, title, platform, note, createdAt, updatedAt } }
 //     重复提交（带同一个 Idempotency-Key）→ 200 + 同一条数据，不产生第二行
 //
-//   失败一律：{ "ok": false, "error": "人能看懂的中文说明" }   ← error 是字符串（v0.7.0 起）
+//   PATCH /api/favorites/:id
+//     路径参数：收藏记录 id（如 fav-xxxx）；请求体：{ "note": "新备注" }
+//     成功 200：{ "ok": true, "data": { id, trendId, title, platform, note, createdAt, updatedAt } }（note 已更新）
+//     找不到该 id → 404「收藏不存在」
+//
+//   DELETE /api/favorites/:id
+//     路径参数：收藏记录 id；无请求体
+//     成功 200：{ "ok": true, "data": { "id": "fav-xxxx", "deleted": true, "softDeleted": true } }
+//     ★ 软删除：只把 is_deleted 置 true，数据不真删，删错用 db/recover_favorite.sql 找回；GET 列表自动跳过
+//     找不到该 id → 404「收藏不存在」
+//
+
+//   失败一律：{ "ok": false, "data": null, "error": "人能看懂的中文说明" }   ← 三键恒定（Day 23 补齐 data）
 //   400 参数缺失/格式不对 ｜ 404 热搜不存在 ｜ 409 已经收藏过 ｜ 405 方法不允许 ｜ 500 服务端错误
+//   Day 23 安全审计：500 不再把数据库原始报错（可能是英文）透传给前端，
+//   原文只进 log() 日志（带 requestId），用户只看到「……失败，请稍后重试」。
 // ============================================================
 //
 // ============================================================
@@ -62,7 +78,7 @@ const PLATFORMS = ["weibo", "baidu", "douyin", "bilibili"];
 // 将来加了登录态，要改成只允许自己的站点域名，并带上凭证相关配置。
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+  "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type,Idempotency-Key",
 };
 
@@ -85,7 +101,7 @@ function ok(statusCode, payload, requestId) {
 }
 
 function fail(statusCode, message, requestId) {
-  return json(statusCode, { ok: false, error: message }, {
+  return json(statusCode, { ok: false, data: null, error: message }, {
     "X-Request-Id": requestId,
   });
 }
@@ -169,6 +185,33 @@ function parseBody(event) {
   }
 }
 
+// 从请求路径解析收藏 id：CloudBase HTTP 访问服务把请求路径放进 event.path，
+// 但绑定前缀可能被网关剥离，所以这里兼容多种形态：
+//   /api/favorites/fav-xxxx  → 取 favorites 之后那段
+//   /favorites/fav-xxxx      → 剥离了 /api 前缀
+//   /fav-xxxx                → 整段前缀都被剥离（直接取最后一段）
+function parseIdFromPath(event) {
+  const raw =
+    (event && (event.path || (event.requestContext && event.requestContext.path))) || "";
+  const p = String(raw).replace(/\/+$/, "");
+  const m1 = p.match(/\/api\/favorites\/(.+)$/);
+  if (m1) return safeDecode(m1[1]);
+  const m2 = p.match(/\/favorites\/(.+)$/);
+  if (m2) return safeDecode(m2[1]);
+  const segs = p.split("/").filter(Boolean);
+  const last = segs[segs.length - 1];
+  if (last && last !== "favorites") return safeDecode(last);
+  return null;
+}
+
+function safeDecode(s) {
+  try {
+    return decodeURIComponent(s);
+  } catch (e) {
+    return s;
+  }
+}
+
 // 行 → 契约形状的归一化（驼峰兜底、时间统一 UTC、note 兜底空串）
 // Day 20 起下沉到 favoritesRepository：它返回的行已经是这个形状，接口层直接用，不再做字段处理。
 
@@ -192,7 +235,7 @@ async function handleGet(envId, query, requestId) {
     return ok(200, { data: data, count: data.length }, requestId);
   } catch (err) {
     log("read_throw", { requestId: requestId, detail: String((err && err.message) || err) });
-    return fail(500, "读取收藏列表失败：" + String((err && err.message) || err), requestId);
+    return fail(500, "读取收藏列表失败，请稍后重试", requestId);
   }
 }
 
@@ -325,7 +368,7 @@ async function handlePost(envId, event, requestId) {
         }
       }
       log("insert_failed", { requestId: requestId, detail: msg });
-      return fail(500, "收藏写入失败：" + msg, requestId);
+      return fail(500, "收藏写入失败，请稍后重试", requestId);
     }
 
     // ---- 7. 写回读一遍：既保证返回的就是库里的真实值，也顺手验证「真的写进去了」----
@@ -346,7 +389,95 @@ async function handlePost(envId, event, requestId) {
     return ok(201, { data: back }, requestId);
   } catch (err) {
     log("post_throw", { requestId: requestId, detail: String((err && err.message) || err) });
-    return fail(500, "收藏失败：" + String((err && err.message) || err), requestId);
+    return fail(500, "收藏失败，请稍后重试", requestId);
+  }
+}
+
+// ------------------------------------------------------------
+// PATCH：改收藏备注（Day 22）
+// ------------------------------------------------------------
+async function handlePatch(envId, event, id, requestId) {
+  if (!id) {
+    return fail(400, "路径缺少收藏 id，应为 /api/favorites/<id>", requestId);
+  }
+
+  const body = parseBody(event);
+  if (body === null || body === undefined) {
+    return fail(400, "请求体不能为空，请传 JSON，例如 {\"note\":\"新备注\"}", requestId);
+  }
+  if (typeof body.note !== "string") {
+    return fail(400, "note 必填且必须是字符串", requestId);
+  }
+  const note = body.note.trim();
+  if (note.length > MAX_NOTE) {
+    return fail(400, "note 太长，最多 " + MAX_NOTE + " 个字符", requestId);
+  }
+
+  try {
+    // 先查：这条收藏还在吗？（软删除行会被 visible() 过滤掉，查不到就按不存在处理）
+    const existed = await favoritesRepository.findFavoriteById(envId, id);
+    if (!existed) {
+      log("patch_not_found", { requestId: requestId, id: id });
+      return fail(404, "收藏不存在", requestId);
+    }
+    const before = existed.note;
+
+    // 只改 note + updatedAt；.select() 让网关直接返回更新后的行
+    const upd = await favoritesRepository.updateFavorite(envId, id, {
+      note: note,
+      updatedAt: new Date().toISOString(),
+    });
+    if (!upd.ok) {
+      const msg = String((upd.error && upd.error.message) || upd.error);
+      log("patch_failed", { requestId: requestId, id: id, detail: msg });
+      return fail(500, "修改备注失败，请稍后重试", requestId);
+    }
+
+    log("patched", {
+      requestId: requestId,
+      id: id,
+      beforeLen: before.length,
+      afterLen: note.length,
+    });
+    return ok(200, { data: upd.row }, requestId);
+  } catch (err) {
+    log("patch_throw", { requestId: requestId, detail: String((err && err.message) || err) });
+    return fail(500, "修改备注失败，请稍后重试", requestId);
+  }
+}
+
+// ------------------------------------------------------------
+// DELETE：取消收藏（Day 22 · 软删除）
+//   为什么删除比新增更容易出事？新增顶多重了/重复了，可判重可忽略；删除一旦真删，数据就没了，
+//   还可能在别的关联处留下缺口。所以这里的三重「确认」：
+//     ① 必须精确指定 id（路径参数），绝不批量删；
+//     ② 删前先查，不存在就 404，不静默成功；
+//     ③ 软删除 —— 只打 is_deleted 标记，数据不真删，删错用 db/recover_favorite.sql 翻回 false 找回。
+// ------------------------------------------------------------
+async function handleDelete(envId, id, requestId) {
+  if (!id) {
+    return fail(400, "路径缺少收藏 id，应为 /api/favorites/<id>", requestId);
+  }
+
+  try {
+    const existed = await favoritesRepository.findFavoriteById(envId, id);
+    if (!existed) {
+      log("delete_not_found", { requestId: requestId, id: id });
+      return fail(404, "收藏不存在", requestId);
+    }
+
+    const del = await favoritesRepository.softDeleteFavorite(envId, id);
+    if (!del.ok) {
+      const msg = String((del.error && del.error.message) || del.error);
+      log("delete_failed", { requestId: requestId, id: id, detail: msg });
+      return fail(500, "取消收藏失败，请稍后重试", requestId);
+    }
+
+    log("soft_deleted", { requestId: requestId, id: id });
+    return ok(200, { data: { id: id, deleted: true, softDeleted: true } }, requestId);
+  } catch (err) {
+    log("delete_throw", { requestId: requestId, detail: String((err && err.message) || err) });
+    return fail(500, "取消收藏失败，请稍后重试", requestId);
   }
 }
 
@@ -362,12 +493,17 @@ exports.main = async (event, context) => {
   const query = e.queryStringParameters || {};
   const requestId = newRequestId();
 
-  // 浏览器的跨域预检（POST 带自定义头时一定会有），直接放行
+  // 浏览器的跨域预检（PATCH/DELETE 带自定义头时一定会有），直接放行
   if (method === "OPTIONS") return json(204, {}, {});
+
+  // PATCH / DELETE 都带路径参数 /api/favorites/:id，先解析出 id
+  const id = parseIdFromPath(e);
 
   if (method === "GET") return handleGet(envId, query, requestId);
   if (method === "POST") return handlePost(envId, e, requestId);
+  if (method === "PATCH") return handlePatch(envId, e, id, requestId);
+  if (method === "DELETE") return handleDelete(envId, id, requestId);
 
   log("reject_method", { requestId: requestId, method: method });
-  return fail(405, "只支持 GET 和 POST 两种方法", requestId);
+  return fail(405, "只支持 GET、POST、PATCH、DELETE 四种方法", requestId);
 };

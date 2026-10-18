@@ -74,7 +74,7 @@
   <!-- 视图④：检查台（健康状态 / 核心表真实数据 / 一次写入测试） -->
   <main class="container view hidden" id="view-check">
     <h2>检查台</h2>
-    <p class="view-desc">验证「页面 → 公网接口 → 数据库」整条链路是否真的通：三项都绿才算部署成功。</p>
+    <p class="view-desc">验证「页面 → 公网接口 → 数据库」整条链路是否真的通：健康、真实数据、写入、删除四项齐备才算完整。</p>
 
     <section class="check-card">
       <h3 class="check-title">① 健康状态</h3>
@@ -92,6 +92,13 @@
       <button class="btn-retry" id="btnWriteTest" type="button">写入一条收藏测试</button>
       <pre class="check-out" id="checkWriteOut"></pre>
     </section>
+
+    <section class="check-card">
+      <h3 class="check-title">④ 删除测试（DELETE /api/favorites/:id）· 带二次确认</h3>
+      <p class="check-hint">删除比新增更容易出事（数据可能丢失），所以这里加了二次确认：先自动找到「写入测试」刚写下的那条收藏，弹窗让你看清删的是哪条，确认后才真正删除。删除为软删除——数据仍在库里，删错可用 <code>db/recover_favorite.sql</code> 找回。</p>
+      <button class="btn-retry" id="btnDeleteTest" type="button">删除测试（需二次确认）</button>
+      <pre class="check-out" id="checkDeleteOut"></pre>
+    </section>
   </main>
 
   <!-- 视图⑤：关于（静态信息页） -->
@@ -102,7 +109,7 @@
       <li><strong>首页</strong>（<code>#/home</code>）：微博 / 抖音 / B站 三平台并列榜单，支持平台标签与关键词筛选。</li>
       <li><strong>平台列表页</strong>（<code>#/platforms</code>）：列出各平台，点击进入对应平台首页。</li>
       <li><strong>热搜详情页</strong>（<code>#/detail/:id</code>）：单条热搜的排名/标题/热度/来源/原链接/收藏/备注，可独立打开。</li>
-      <li><strong>检查台</strong>（<code>#/check</code>）：健康状态、核心表真实数据、收藏写入测试入口。</li>
+      <li><strong>检查台</strong>（<code>#/check</code>）：健康状态、核心表真实数据、收藏写入测试、收藏删除测试（带二次确认）。</li>
       <li>三个列表类视图（首页、平台列表页、我的收藏）均具备 <strong>加载中 / 加载成功 / 没有结果 / 请求失败</strong> 四种状态。</li>
       <li>「我的收藏」视图（<code>#/fav</code>）下的关键词筛选会同时匹配<strong>标题与备注</strong>。</li>
     </ul>

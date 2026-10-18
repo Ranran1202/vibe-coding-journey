@@ -85,8 +85,8 @@ HTTP 200 · ok=true · count=20 · source=synced · date=2026-10-16（今天=202
 说明：默认列表按热度倒序取前 20，B站热度值偏低常被挤出前 20，**必须单独按平台查才能证明它在**。
 
 **证据链接**：
-`https://wb-test01-d6gp6u2pjd3393af3.service.tcloudbase.com/api/hot`
-`https://wb-test01-d6gp6u2pjd3393af3.service.tcloudbase.com/api/hot?platform=bilibili&limit=1`
+`https://<env-id>.service.tcloudbase.com/api/hot`
+`https://<env-id>.service.tcloudbase.com/api/hot?platform=bilibili&limit=1`
 
 ---
 
@@ -160,7 +160,7 @@ A2 / A3 均 PASS → 重构后接口行为未变
 HTTP 200 · 线上 index.html md5=e6ba9c4cf0e0ac9e157e56c7124db76f 与本地一致
 app.js 含 view-check 视图 ×1
 ```
-**地址**：`https://wb-test01-d6gp6u2pjd3393af3-1500247035.tcloudbaseapp.com/#/check`
+**地址**：`https://<env-id>-<租户号>.tcloudbaseapp.com/#/check`
 （首次打开会有 CloudBase 测试域名确认页，点「确定访问」进入）
 
 ### A5-2　同伴从自己设备打开成功 —— **未执行**

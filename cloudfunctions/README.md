@@ -80,7 +80,7 @@ node -p "'https://'+require('./cloudbaserc.json').envId+'.service.tcloudbase.com
 页面地址：
 
 ```bash
-node -p "'https://'+require('./cloudbaserc.json').envId+'-1500247035.tcloudbaseapp.com/'"
+node -p "'https://'+require('./cloudbaserc.json').envId+'-<租户号>.tcloudbaseapp.com/'"
 ```
 
 ---

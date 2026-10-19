@@ -653,7 +653,9 @@
     favBtn.className = "btn-fav-toggle" + (fav ? " is-fav" : "");
     favBtn.textContent = fav ? "★ 已收藏" : "☆ 收藏";
     favBtn.addEventListener("click", function () {
+      var wasFav = window.FavStore.isFav(it);
       window.FavStore.toggleFav(it);
+      showToast(!wasFav ? "已收藏 ✓ " + it.title : "已取消收藏 " + it.title);
       renderDetail();        // 刷新详情页状态
       if (state.view === "home" || state.view === "fav") renderList();
     });

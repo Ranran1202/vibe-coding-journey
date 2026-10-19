@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>今日热搜</title>
+  <link rel="icon" href="/favicon.ico">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -50,6 +51,9 @@
 
     <!-- 筛选结果数量（屏幕阅读器可朗读，aria-live 实时播报） -->
     <p class="result-count" id="resultCount" aria-live="polite"></p>
+
+    <!-- 余力加练：导出我的收藏（纯前端 localStorage 导出，不碰后端，零验收风险） -->
+    <button class="btn-export" id="btnExportFav" type="button" hidden>导出我的收藏（JSON）</button>
 
     <!-- 数据来源标注（数据来自云端数据库，由 js/app.js 的 renderDataSourceBadge() 填充） -->
     <p class="data-source" id="dataSourceBadge" aria-live="polite"></p>
@@ -126,5 +130,6 @@
   <script src="js/config.js"></script>
   <script src="js/store.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/export-fav.js"></script>
 </body>
 </html>
